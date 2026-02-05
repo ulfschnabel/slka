@@ -5,8 +5,8 @@ dist/
 *.dll
 *.so
 *.dylib
-slka-read
-slka-write
+slka
+slka-*
 
 # Test binary, built with `go test -c`
 *.test
