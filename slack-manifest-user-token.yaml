@@ -19,6 +19,7 @@ oauth_config:
       - mpim:read
       - mpim:history
       - users:read
+      - reactions:read
       # Write scopes
       - chat:write
       - channels:manage

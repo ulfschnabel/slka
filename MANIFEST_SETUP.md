@@ -92,6 +92,7 @@ When prompted, paste your token for both read and write (same token).
 - `mpim:read` - List group DMs
 - `mpim:history` - Read group DMs
 - `users:read` - List users
+- `reactions:read` - Read reactions on messages
 
 **Write Scopes:**
 - `chat:write` - Send messages as you
@@ -103,7 +104,6 @@ When prompted, paste your token for both read and write (same token).
 
 All the same scopes, plus:
 - `users:read.email` - Look up users by email
-- `reactions:read` - Read reactions on messages
 - `chat:write.public` - Post to channels without joining
 - `im:write` - Send DMs
 - `mpim:write` - Send group DMs
