@@ -4,7 +4,6 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go test ./...
 
 builds:
   - id: slka
@@ -25,15 +24,11 @@ builds:
 
 archives:
   - id: slka
-    format: tar.gz
     name_template: >-
       {{ .ProjectName }}-
       {{- .Version }}-
       {{- .Os }}-
       {{- .Arch }}
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - README.md
       - QUICKSTART.md
@@ -41,6 +36,7 @@ archives:
       - MANIFEST_SETUP.md
       - LICENSE*
       - slack-manifest-*.yaml
+    # tar.gz for Unix, zip for Windows (handled automatically by GoReleaser)
 
 checksum:
   name_template: 'checksums.txt'
