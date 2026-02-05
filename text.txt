@@ -1,0 +1,1290 @@
+# slka — Slack CLI for Agentic Workflows
+
+## Overview
+
+Build two separate CLI tools for interacting with Slack, with a clear separation between read and write operations for security purposes.
+
+- **`slka-read`** — Read-only operations (low risk)
+- **`slka-write`** — Write operations (high risk, includes human approval mode)
+
+## Design Principles
+
+1. **Read/write separation** — Two distinct tools with separate Slack app tokens/scopes
+1. **JSON output** — All commands output JSON for easy parsing by LLMs and scripts
+1. **Human approval mode** — `slka-write` can require explicit human confirmation before executing
+1. **Test-driven development** — Write tests first, then implement to pass them
+1. **Link handling** — Properly handle Slack’s `<url|text>` link format in both directions
+
+## Configuration
+
+All configuration is stored in `~/.config/slka/config.json`:
+
+```json
+{
+  "read_token": "xoxb-...",
+  "write_token": "xoxb-...",
+  "user_token": "xoxp-...",
+  "require_approval": true
+}
+```
+
+### Configuration Fields
+
+|Field             |Type   |Description                                                                    |
+|------------------|-------|-------------------------------------------------------------------------------|
+|`read_token`      |string |Bot token with read-only scopes for `slka-read`                                |
+|`write_token`     |string |Bot token with write scopes for `slka-write`                                   |
+|`user_token`      |string |User token for personal preferences (sections, etc.) — optional                |
+|`require_approval`|boolean|When true, `slka-write` requires human confirmation before executing any action|
+
+### Environment Variable Overrides
+
+Environment variables can override config file values (useful for CI/CD or temporary overrides):
+
+- `SLKA_READ_TOKEN` — Override read token
+- `SLKA_WRITE_TOKEN` — Override write token
+- `SLKA_USER_TOKEN` — Override user token
+
+Note: `require_approval` can only be set in the config file, not via environment variable. This is intentional — it prevents accidental or malicious bypassing of the safety mechanism.
+
+### Config Management Commands
+
+Both tools support a `config` subcommand:
+
+```bash
+# View current config (tokens are masked)
+slka-read config show
+slka-write config show
+
+# Set values
+slka-write config set read_token "xoxb-..."
+slka-write config set write_token "xoxb-..."
+slka-write config set user_token "xoxp-..."
+slka-write config set require_approval true
+
+# Initialize config interactively
+slka-write config init
+```
+
+The `config init` command walks through setup:
+
+1. Prompts for read token
+1. Prompts for write token
+1. Prompts for user token (optional, for section management)
+1. Asks whether to enable require_approval (recommended: yes)
+1. Writes config file with appropriate permissions (0600)
+
+## Required Slack Scopes
+
+### For `slka-read` (read-only bot token)
+
+- `channels:read` — list public channels
+- `channels:history` — read messages in public channels
+- `groups:read` — list private channels
+- `groups:history` — read messages in private channels
+- `im:read` — list DMs
+- `im:history` — read DM messages
+- `mpim:read` — list group DMs
+- `mpim:history` — read group DM messages
+- `users:read` — list users, get user info
+- `users:read.email` — look up users by email
+- `reactions:read` — read reactions on messages
+- `pins:read` — read pinned items (used for saved items in some contexts)
+- `bookmarks:read` — read saved/bookmarked messages
+
+Note: Channel sections (sidebar categories) are user-specific preferences. The Slack API has limited support for these — they’re managed via `users.prefs` endpoints which require a user token, not a bot token. See implementation notes below.
+
+### For `slka-write` (write bot token)
+
+- `chat:write` — send messages
+- `chat:write.public` — send to channels without joining
+- `reactions:write` — add/remove reactions
+- `channels:manage` — create, archive, rename channels, set topic/purpose
+- `groups:write` — manage private channels
+- `im:write` — send DMs
+- `mpim:write` — send group DMs
+- `users:read` — needed for user lookups when sending DMs (can reuse read token for this)
+- `pins:write` — pin/unpin items
+- `bookmarks:write` — save/unsave messages
+
+### User Token Requirement for Sections
+
+Channel sections (sidebar categories) are personal preferences stored per-user, not workspace-wide settings. Managing them requires a **user token** with these scopes:
+
+- `users.profile:read` — read user preferences including sections
+- `users.profile:write` — modify user preferences including sections
+
+This means the config file may need an additional token:
+
+```json
+{
+  "read_token": "xoxb-...",
+  "write_token": "xoxb-...",
+  "user_token": "xoxp-...",
+  "require_approval": true
+}
+```
+
+The `user_token` is optional — section management commands will return an error if it’s not configured.
+
+-----
+
+## CLI Specification
+
+### `slka-read`
+
+#### Global Options
+
+```
+--token <token>     Override the default read token
+--output <format>   Output format: json (default), json-pretty
+--help              Show help
+--version           Show version
+```
+
+#### Commands
+
+##### `slka-read channels list`
+
+List all channels the bot has access to.
+
+```
+Options:
+  --include-archived    Include archived channels
+  --type <type>         Filter by type: public, private, all (default: all)
+  --limit <n>           Maximum number of channels to return
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channels": [
+    {
+      "id": "C123456",
+      "name": "general",
+      "is_private": false,
+      "is_archived": false,
+      "topic": "Company-wide announcements",
+      "purpose": "General discussion",
+      "member_count": 42,
+      "created": 1609459200
+    }
+  ]
+}
+```
+
+##### `slka-read channels info <channel>`
+
+Get detailed information about a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name (with #)
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel": {
+    "id": "C123456",
+    "name": "general",
+    "is_private": false,
+    "is_archived": false,
+    "topic": "Company-wide announcements",
+    "purpose": "General discussion",
+    "member_count": 42,
+    "created": 1609459200,
+    "creator": "U123456",
+    "last_message_ts": "1706123456.789000"
+  }
+}
+```
+
+##### `slka-read channels members <channel>`
+
+List members of a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+
+Options:
+  --limit <n>    Maximum number of members to return
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel_id": "C123456",
+  "members": [
+    {
+      "id": "U123456",
+      "name": "johndoe",
+      "real_name": "John Doe"
+    }
+  ]
+}
+```
+
+##### `slka-read channels history <channel>`
+
+Fetch messages from a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+
+Options:
+  --since <timestamp>    Only messages after this Unix timestamp or ISO8601 datetime
+  --until <timestamp>    Only messages before this timestamp
+  --limit <n>            Maximum number of messages (default: 100)
+  --include-threads      Include thread replies inline
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel_id": "C123456",
+  "messages": [
+    {
+      "ts": "1706123456.789000",
+      "user": "U123456",
+      "user_name": "johndoe",
+      "text": "Hello world",
+      "thread_ts": null,
+      "reply_count": 0,
+      "reactions": [
+        {"name": "thumbsup", "count": 2, "users": ["U111", "U222"]}
+      ],
+      "links": [
+        {"url": "https://example.com", "text": "Example"}
+      ]
+    }
+  ]
+}
+```
+
+##### `slka-read threads get <channel> <thread_ts>`
+
+Fetch all replies in a thread.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <thread_ts>    Timestamp of the parent message
+
+Options:
+  --limit <n>    Maximum number of replies
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel_id": "C123456",
+  "thread_ts": "1706123456.789000",
+  "messages": [
+    {
+      "ts": "1706123456.789000",
+      "user": "U123456",
+      "user_name": "johndoe",
+      "text": "Parent message",
+      "is_parent": true
+    },
+    {
+      "ts": "1706123500.000000",
+      "user": "U789",
+      "user_name": "janedoe",
+      "text": "Reply to thread",
+      "is_parent": false
+    }
+  ]
+}
+```
+
+##### `slka-read users list`
+
+List all users in the workspace.
+
+```
+Options:
+  --include-bots       Include bot users
+  --include-deleted    Include deactivated users
+  --limit <n>          Maximum number of users
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "users": [
+    {
+      "id": "U123456",
+      "name": "johndoe",
+      "real_name": "John Doe",
+      "email": "john@example.com",
+      "is_bot": false,
+      "is_deleted": false,
+      "title": "Software Engineer",
+      "timezone": "America/New_York"
+    }
+  ]
+}
+```
+
+##### `slka-read users lookup <query>`
+
+Find a user by name or email.
+
+```
+Arguments:
+  <query>    Name or email to search for
+
+Options:
+  --by <field>    Search by: name, email, auto (default: auto)
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "user": {
+    "id": "U123456",
+    "name": "johndoe",
+    "real_name": "John Doe",
+    "email": "john@example.com",
+    "is_bot": false,
+    "title": "Software Engineer"
+  }
+}
+```
+
+##### `slka-read reactions get <channel> <timestamp>`
+
+Get reactions on a specific message.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <timestamp>    Message timestamp
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel_id": "C123456",
+  "message_ts": "1706123456.789000",
+  "reactions": [
+    {
+      "name": "thumbsup",
+      "count": 3,
+      "users": [
+        {"id": "U123", "name": "johndoe"},
+        {"id": "U456", "name": "janedoe"},
+        {"id": "U789", "name": "bob"}
+      ]
+    }
+  ]
+}
+```
+
+##### `slka-read saved list`
+
+List messages saved for later (bookmarked).
+
+```
+Options:
+  --limit <n>    Maximum number of saved items to return
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "items": [
+    {
+      "channel_id": "C123456",
+      "channel_name": "general",
+      "message_ts": "1706123456.789000",
+      "message_text": "Don't forget to review this",
+      "saved_at": 1706200000,
+      "user": "U123456",
+      "user_name": "johndoe"
+    }
+  ]
+}
+```
+
+##### `slka-read sections list`
+
+List all channel sections (categories) in the sidebar.
+
+```
+Output schema:
+```json
+{
+  "ok": true,
+  "sections": [
+    {
+      "id": "S123456",
+      "name": "Priority",
+      "type": "custom",
+      "channels": ["C123", "C456", "C789"]
+    },
+    {
+      "id": "S789",
+      "name": "Starred",
+      "type": "starred",
+      "channels": ["C111"]
+    }
+  ]
+}
+```
+
+##### `slka-read sections get <section_id>`
+
+Get details of a specific section including its channels.
+
+```
+Arguments:
+  <section_id>    Section ID
+```
+
+-----
+
+### `slka-write`
+
+#### Global Options
+
+```
+--token <token>         Override the default write token
+--output <format>       Output format: json (default), json-pretty
+--dry-run               Show what would be done without executing
+--help                  Show help
+--version               Show version
+```
+
+#### Human Approval Mode
+
+When `require_approval` is set to `true` in the config file (`~/.config/slka/config.json`), the tool will:
+
+1. Print a description of the action to be taken
+1. Print the full JSON payload that would be sent to Slack
+1. Prompt for confirmation: `Execute this action? [y/N]`
+1. Only proceed if the user explicitly types `y` or `yes`
+
+This setting can only be changed via the config file — there is no command-line flag to bypass it. This is a deliberate safety measure to prevent accidental or malicious disabling of the approval requirement.
+
+For scripted/automated use, approval can be piped in, but the default is to abort if stdin is not a TTY and approval is required.
+
+Output when approval is required:
+
+```json
+{
+  "ok": false,
+  "requires_approval": true,
+  "action": "send_message",
+  "description": "Send message to #general",
+  "payload": {
+    "channel": "C123456",
+    "text": "Hello world"
+  },
+  "approve_command": "echo 'y' | slka-write message send ..."
+}
+```
+
+#### Commands
+
+##### `slka-write message send <channel> <text>`
+
+Send a message to a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+  <text>       Message text (supports Slack link format)
+
+Options:
+  --as-user           Post as the authed user instead of bot
+  --unfurl-links      Enable link previews (default: true)
+  --unfurl-media      Enable media previews (default: true)
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel": "C123456",
+  "ts": "1706123456.789000",
+  "message": {
+    "text": "Hello world",
+    "user": "U123456"
+  }
+}
+```
+
+##### `slka-write message reply <channel> <thread_ts> <text>`
+
+Reply to a thread.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <thread_ts>    Timestamp of parent message
+  <text>         Reply text
+
+Options:
+  --broadcast    Also post to channel (not just thread)
+```
+
+##### `slka-write message edit <channel> <timestamp> <text>`
+
+Edit an existing message.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <timestamp>    Message timestamp
+  <text>         New message text
+```
+
+##### `slka-write message schedule <channel> <text> --at <time>`
+
+Schedule a message for later.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+  <text>       Message text
+
+Options:
+  --at <time>    When to send (Unix timestamp or ISO8601 datetime) [required]
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "channel": "C123456",
+  "scheduled_message_id": "Q123456",
+  "post_at": 1706200000
+}
+```
+
+##### `slka-write message schedule-list [channel]`
+
+List scheduled messages.
+
+```
+Arguments:
+  [channel]    Optional channel to filter by
+```
+
+##### `slka-write message schedule-delete <channel> <scheduled_message_id>`
+
+Cancel a scheduled message.
+
+##### `slka-write dm send <users> <text>`
+
+Send a direct message to one or more users.
+
+```
+Arguments:
+  <users>    Comma-separated user IDs
+  <text>     Message text
+```
+
+For multiple users, this opens a group DM (mpim).
+
+##### `slka-write reaction add <channel> <timestamp> <emoji>`
+
+Add a reaction to a message.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <timestamp>    Message timestamp
+  <emoji>        Emoji name without colons (e.g., "thumbsup")
+```
+
+##### `slka-write reaction remove <channel> <timestamp> <emoji>`
+
+Remove a reaction from a message.
+
+##### `slka-write channels create <name>`
+
+Create a new channel.
+
+```
+Arguments:
+  <name>    Channel name (without #)
+
+Options:
+  --private           Create as private channel
+  --description <d>   Set channel purpose/description
+  --topic <t>         Set channel topic
+```
+
+##### `slka-write channels archive <channel>`
+
+Archive a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+```
+
+##### `slka-write channels unarchive <channel>`
+
+Unarchive a channel.
+
+##### `slka-write channels rename <channel> <new_name>`
+
+Rename a channel.
+
+```
+Arguments:
+  <channel>     Channel ID or name
+  <new_name>    New channel name
+```
+
+##### `slka-write channels set-topic <channel> <topic>`
+
+Set channel topic.
+
+##### `slka-write channels set-description <channel> <description>`
+
+Set channel description/purpose.
+
+##### `slka-write channels invite <channel> <users>`
+
+Invite users to a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+  <users>      Comma-separated user IDs
+```
+
+##### `slka-write channels kick <channel> <users>`
+
+Remove users from a channel.
+
+```
+Arguments:
+  <channel>    Channel ID or name
+  <users>      Comma-separated user IDs
+```
+
+##### `slka-write saved add <channel> <timestamp>`
+
+Save a message for later (bookmark it).
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <timestamp>    Message timestamp
+```
+
+##### `slka-write saved remove <channel> <timestamp>`
+
+Remove a message from saved items.
+
+```
+Arguments:
+  <channel>      Channel ID or name
+  <timestamp>    Message timestamp
+```
+
+##### `slka-write sections create <name>`
+
+Create a new channel section (category) in the sidebar.
+
+```
+Arguments:
+  <name>    Section name
+```
+
+Output schema:
+
+```json
+{
+  "ok": true,
+  "section": {
+    "id": "S123456",
+    "name": "Priority"
+  }
+}
+```
+
+##### `slka-write sections delete <section_id>`
+
+Delete a channel section.
+
+```
+Arguments:
+  <section_id>    Section ID
+```
+
+##### `slka-write sections rename <section_id> <new_name>`
+
+Rename a channel section.
+
+```
+Arguments:
+  <section_id>    Section ID
+  <new_name>      New section name
+```
+
+##### `slka-write sections move <channel> <section_id>`
+
+Move a channel to a different section.
+
+```
+Arguments:
+  <channel>       Channel ID or name
+  <section_id>    Target section ID (use "default" for unsectioned)
+```
+
+##### `slka-write sections reorder <section_id> --position <n>`
+
+Change the order of a section in the sidebar.
+
+```
+Arguments:
+  <section_id>    Section ID
+
+Options:
+  --position <n>    New position (0-indexed)
+```
+
+-----
+
+## Error Handling
+
+All errors should return a consistent JSON structure:
+
+```json
+{
+  "ok": false,
+  "error": "channel_not_found",
+  "error_description": "The specified channel does not exist or the bot does not have access",
+  "suggestion": "Check the channel ID or ensure the bot is invited to the channel"
+}
+```
+
+Exit codes:
+
+- `0` — Success
+- `1` — General error
+- `2` — Authentication error
+- `3` — Permission error (scope missing)
+- `4` — Not found (channel, user, message)
+- `5` — Approval required but not given (in require-approval mode)
+- `6` — Rate limited (include retry-after in output)
+
+-----
+
+## Link Handling
+
+### Parsing incoming links
+
+Slack messages contain links in the format `<url|display_text>` or just `<url>`. The CLI should parse these and include them in a structured `links` array in the message output.
+
+### Formatting outgoing links
+
+When sending messages, accept either:
+
+- Plain URLs — send as-is, let Slack unfurl
+- Markdown-style `[text](url)` — convert to Slack’s `<url|text>` format
+- Slack-native `<url|text>` — pass through unchanged
+
+-----
+
+## Implementation Details
+
+### Technology Stack
+
+**Language: Go**
+
+Go is chosen for:
+
+- Single static binary compilation — no runtime dependencies
+- Trivial cross-compilation for Linux and macOS (amd64, arm64)
+- Excellent CLI ecosystem
+- Mature Slack SDK
+- Fast compilation
+
+**Dependencies:**
+
+- **CLI framework**: `github.com/spf13/cobra` — industry standard for Go CLIs
+- **Config management**: `github.com/spf13/viper` — handles config files, works well with cobra
+- **Slack SDK**: `github.com/slack-go/slack` — mature, well-maintained
+- **Testing**: Standard `testing` package + `github.com/stretchr/testify` for assertions
+
+**Build targets:**
+
+- `linux/amd64`
+- `linux/arm64`
+- `darwin/amd64` (Intel Mac)
+- `darwin/arm64` (Apple Silicon)
+
+### Project Structure
+
+```
+slka/
+├── cmd/
+│   ├── slka-read/
+│   │   └── main.go             # Entry point for slka-read
+│   └── slka-write/
+│       └── main.go             # Entry point for slka-write
+├── internal/
+│   ├── config/
+│   │   ├── config.go           # Config loading/saving
+│   │   └── config_test.go
+│   ├── auth/
+│   │   ├── auth.go             # Token management
+│   │   └── auth_test.go
+│   ├── approval/
+│   │   ├── approval.go         # Human approval logic
+│   │   └── approval_test.go
+│   ├── links/
+│   │   ├── links.go            # Link parsing/formatting
+│   │   └── links_test.go
+│   ├── output/
+│   │   ├── output.go           # JSON output formatting
+│   │   └── output_test.go
+│   └── slack/
+│       ├── client.go           # Slack API wrapper
+│       ├── channels.go         # Channel operations
+│       ├── channels_test.go
+│       ├── users.go            # User operations
+│       ├── users_test.go
+│       ├── messages.go         # Message operations
+│       ├── messages_test.go
+│       └── reactions.go        # Reaction operations
+├── pkg/
+│   └── read/                   # CLI commands for slka-read
+│       ├── root.go
+│       ├── channels.go
+│       ├── users.go
+│       ├── threads.go
+│       └── reactions.go
+│   └── write/                  # CLI commands for slka-write
+│       ├── root.go
+│       ├── channels.go
+│       ├── messages.go
+│       ├── dm.go
+│       ├── reactions.go
+│       └── config.go           # Config subcommands
+├── go.mod
+├── go.sum
+├── Makefile                    # Build targets for all platforms
+└── README.md
+```
+
+### Test-Driven Development Approach
+
+For each feature, follow this order:
+
+1. **Write the test first** — Define expected behavior
+1. **Run test, confirm it fails** — Ensure test is valid
+1. **Implement minimum code to pass** — Focus on correctness
+1. **Refactor** — Clean up while keeping tests green
+1. **Add edge case tests** — Error handling, empty inputs, etc.
+
+#### Example Test Cases to Start With
+
+```go
+// internal/links/links_test.go
+
+package links
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestParseSlackLinkWithText(t *testing.T) {
+    // Parse Slack link format <url|text>
+    text := "Check out <https://example.com|this link> for more"
+    links := ParseSlackLinks(text)
+    
+    assert.Len(t, links, 1)
+    assert.Equal(t, "https://example.com", links[0].URL)
+    assert.Equal(t, "this link", links[0].Text)
+}
+
+func TestParseSlackLinkWithoutText(t *testing.T) {
+    // Parse Slack link format <url> without display text
+    text := "Visit <https://example.com>"
+    links := ParseSlackLinks(text)
+    
+    assert.Len(t, links, 1)
+    assert.Equal(t, "https://example.com", links[0].URL)
+    assert.Empty(t, links[0].Text)
+}
+
+func TestFormatMarkdownLinkToSlack(t *testing.T) {
+    // Convert markdown [text](url) to Slack <url|text>
+    text := "Check out [this link](https://example.com) for more"
+    result := FormatLinksForSlack(text)
+    
+    assert.Equal(t, "Check out <https://example.com|this link> for more", result)
+}
+
+func TestPassthroughSlackNativeLinks(t *testing.T) {
+    // Don't double-encode already-formatted Slack links
+    text := "Check out <https://example.com|this link> for more"
+    result := FormatLinksForSlack(text)
+    
+    assert.Equal(t, text, result)
+}
+```
+
+```go
+// internal/approval/approval_test.go
+
+package approval
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestApprovalRequiredNoTTY(t *testing.T) {
+    // Should fail if approval required but no TTY available
+    approver := NewApprover(false, nil) // isatty = false
+    
+    err := approver.Require("send_message", map[string]interface{}{})
+    
+    assert.Error(t, err)
+    assert.IsType(t, &ApprovalRequiredError{}, err)
+}
+
+func TestApprovalGranted(t *testing.T) {
+    // Should proceed when user types 'y'
+    mockReader := strings.NewReader("y\n")
+    approver := NewApprover(true, mockReader) // isatty = true
+    
+    err := approver.Require("send_message", map[string]interface{}{})
+    
+    assert.NoError(t, err)
+}
+
+func TestApprovalDenied(t *testing.T) {
+    // Should abort when user types anything other than y/yes
+    mockReader := strings.NewReader("n\n")
+    approver := NewApprover(true, mockReader)
+    
+    err := approver.Require("send_message", map[string]interface{}{})
+    
+    assert.Error(t, err)
+    assert.IsType(t, &ApprovalDeniedError{}, err)
+}
+
+func TestDryRunReturnsPayload(t *testing.T) {
+    // Dry run should return the action without executing
+    result := DryRun("send_message", map[string]interface{}{
+        "channel": "C123",
+        "text":    "Hello",
+    })
+    
+    assert.False(t, result.OK)
+    assert.True(t, result.DryRun)
+    assert.Equal(t, "C123", result.Payload["channel"])
+}
+```
+
+```go
+// internal/slack/channels_test.go
+
+package slack
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
+)
+
+func TestListChannelsSuccess(t *testing.T) {
+    // Should return formatted channel list
+    mockClient := new(MockSlackClient)
+    mockClient.On("GetConversations", mock.Anything).Return(
+        []slack.Channel{
+            {ID: "C123", Name: "general", IsPrivate: false},
+        },
+        "",  // cursor
+        nil, // error
+    )
+    
+    svc := NewChannelService(mockClient)
+    result, err := svc.List(ListOptions{})
+    
+    assert.NoError(t, err)
+    assert.True(t, result.OK)
+    assert.Len(t, result.Channels, 1)
+    assert.Equal(t, "general", result.Channels[0].Name)
+}
+
+func TestListChannelsExcludesArchivedByDefault(t *testing.T) {
+    // Should exclude archived channels unless --include-archived
+    mockClient := new(MockSlackClient)
+    mockClient.On("GetConversations", mock.MatchedBy(func(params *slack.GetConversationsParameters) bool {
+        return params.ExcludeArchived == true
+    })).Return([]slack.Channel{}, "", nil)
+    
+    svc := NewChannelService(mockClient)
+    _, err := svc.List(ListOptions{IncludeArchived: false})
+    
+    assert.NoError(t, err)
+    mockClient.AssertExpectations(t)
+}
+```
+
+### Mocking Slack API
+
+Create an interface that wraps the Slack client for testability:
+
+```go
+// internal/slack/client.go
+
+package slack
+
+import "github.com/slack-go/slack"
+
+// SlackClient defines the interface for Slack API operations
+// This allows us to mock the client in tests
+type SlackClient interface {
+    // Channels
+    GetConversations(params *slack.GetConversationsParameters) ([]slack.Channel, string, error)
+    GetConversationInfo(input *slack.GetConversationInfoInput) (*slack.Channel, error)
+    GetConversationHistory(params *slack.GetConversationHistoryParameters) (*slack.GetConversationHistoryResponse, error)
+    GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error)
+    GetUsersInConversation(params *slack.GetUsersInConversationParameters) ([]string, string, error)
+    
+    // Users
+    GetUsers(options ...slack.GetUsersOption) ([]slack.User, error)
+    GetUserByEmail(email string) (*slack.User, error)
+    GetUserInfo(user string) (*slack.User, error)
+    
+    // Messages
+    PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
+    UpdateMessage(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error)
+    ScheduleMessage(channelID, postAt string, options ...slack.MsgOption) (string, string, error)
+    
+    // Reactions
+    GetReactions(item slack.ItemRef, params slack.GetReactionsParameters) ([]slack.ItemReaction, error)
+    AddReaction(name string, item slack.ItemRef) error
+    RemoveReaction(name string, item slack.ItemRef) error
+    
+    // Channel management
+    CreateConversation(params slack.CreateConversationParams) (*slack.Channel, error)
+    ArchiveConversation(channelID string) error
+    UnArchiveConversation(channelID string) error
+    RenameConversation(channelID, name string) (*slack.Channel, error)
+    SetTopicOfConversation(channelID, topic string) (*slack.Channel, error)
+    SetPurposeOfConversation(channelID, purpose string) (*slack.Channel, error)
+    InviteUsersToConversation(channelID string, users ...string) (*slack.Channel, error)
+    KickUserFromConversation(channelID, user string) error
+    
+    // DMs
+    OpenConversation(params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
+}
+
+// RealSlackClient wraps the actual slack.Client
+type RealSlackClient struct {
+    *slack.Client
+}
+
+// Ensure RealSlackClient implements SlackClient
+var _ SlackClient = (*RealSlackClient)(nil)
+```
+
+```go
+// internal/slack/mock_client.go (for tests)
+
+package slack
+
+import "github.com/stretchr/testify/mock"
+
+type MockSlackClient struct {
+    mock.Mock
+}
+
+func (m *MockSlackClient) GetConversations(params *slack.GetConversationsParameters) ([]slack.Channel, string, error) {
+    args := m.Called(params)
+    return args.Get(0).([]slack.Channel), args.String(1), args.Error(2)
+}
+
+// ... implement other methods
+```
+
+-----
+
+## Implementation Order
+
+Follow this order to build incrementally with working tests at each step:
+
+### Phase 1: Foundation
+
+1. Project setup, dependencies, basic CLI structure
+1. Config/auth loading (tokens from env/file)
+1. Error handling framework
+1. Output formatting (JSON)
+1. Link parsing/formatting utilities
+
+### Phase 2: Read Operations (slka-read)
+
+1. `users list` and `users lookup` — simplest API calls
+1. `channels list` and `channels info`
+1. `channels history` with time filtering
+1. `threads get`
+1. `reactions get`
+1. `channels members`
+
+### Phase 3: Write Operations (slka-write)
+
+1. Human approval system (before any write operations)
+1. `message send` — basic message posting
+1. `message reply` — threading
+1. `message edit`
+1. `reaction add` and `reaction remove`
+1. `dm send` — DMs and group DMs
+1. `message schedule`, `schedule-list`, `schedule-delete`
+1. Channel management: `create`, `archive`, `unarchive`, `rename`
+1. Channel metadata: `set-topic`, `set-description`
+1. Channel membership: `invite`, `kick`
+
+### Phase 4: Polish
+
+1. Comprehensive error messages
+1. Rate limit handling with backoff
+1. Pagination for large results
+1. Documentation and help text
+1. Integration tests with real Slack API (optional, requires test workspace)
+
+-----
+
+## Build & Distribution
+
+### Makefile
+
+```makefile
+BINARY_READ = slka-read
+BINARY_WRITE = slka-write
+VERSION ?= $(shell git describe --tags --always --dirty)
+LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
+
+.PHONY: all build test clean
+
+all: build
+
+build: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64
+
+build-linux-amd64:
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_READ)-linux-amd64 ./cmd/slka-read
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_WRITE)-linux-amd64 ./cmd/slka-write
+
+build-linux-arm64:
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_READ)-linux-arm64 ./cmd/slka-read
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_WRITE)-linux-arm64 ./cmd/slka-write
+
+build-darwin-amd64:
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_READ)-darwin-amd64 ./cmd/slka-read
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_WRITE)-darwin-amd64 ./cmd/slka-write
+
+build-darwin-arm64:
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_READ)-darwin-arm64 ./cmd/slka-read
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_WRITE)-darwin-arm64 ./cmd/slka-write
+
+test:
+	go test -v -race -cover ./...
+
+test-coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+
+lint:
+	golangci-lint run
+
+clean:
+	rm -rf dist/
+	rm -f coverage.out coverage.html
+
+install:
+	go install ./cmd/slka-read
+	go install ./cmd/slka-write
+```
+
+### Release Process
+
+1. Tag the release: `git tag v1.0.0`
+1. Build all binaries: `make build`
+1. Create GitHub release with binaries attached
+1. Optionally publish to Homebrew tap for Mac users
+
+-----
+
+## Usage Examples
+
+### Morning Brief Workflow
+
+```bash
+# Get messages from key channels since yesterday
+YESTERDAY=$(date -d 'yesterday 9am' +%s)
+slka-read channels history general --since $YESTERDAY > /tmp/general.json
+slka-read channels history engineering --since $YESTERDAY > /tmp/engineering.json
+
+# Feed to Claude for summarization
+cat /tmp/*.json | claude "Summarize the key updates from these Slack messages"
+```
+
+### Reminder Workflow with Approval
+
+```bash
+# Approval mode is configured in ~/.config/slka/config.json:
+# { "require_approval": true, ... }
+
+# Claude Code can generate this command, but human must approve
+slka-write dm send U123,U456,U789 "Reminder: Q1 report sections are due by EOD Friday. Please update your status in <https://jira.example.com/Q1|the tracking ticket>."
+
+# Output:
+# {
+#   "requires_approval": true,
+#   "action": "send_dm",
+#   "description": "Send DM to 3 users: @johndoe, @janedoe, @bob",
+#   "payload": { ... }
+# }
+# Execute this action? [y/N]: _
+```
+
+### Stale Channel Cleanup
+
+```bash
+# Find all channels
+slka-read channels list --include-archived > channels.json
+
+# Ask Claude to identify stale ones
+cat channels.json | claude "Which channels have no recent activity and fewer than 5 members? Return as a list of channel IDs."
+
+# Archive stale channels (with approval)
+slka-write channels archive C123456
+slka-write channels archive C789012
+```
