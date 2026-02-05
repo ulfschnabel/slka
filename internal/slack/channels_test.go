@@ -16,11 +16,11 @@ func TestListChannelsSuccess(t *testing.T) {
 			{
 				GroupConversation: slack.GroupConversation{
 					Conversation: slack.Conversation{
-						ID: "C123",
+						ID:        "C123",
+						IsPrivate: false,
 					},
 					Name: "general",
 				},
-				IsPrivate: false,
 			},
 		},
 		"",  // cursor
