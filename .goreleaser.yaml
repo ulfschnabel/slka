@@ -1,0 +1,146 @@
+# GoReleaser configuration for slka
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: slka
+    main: ./cmd/slka
+    binary: slka
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+archives:
+  - id: slka
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}-
+      {{- .Version }}-
+      {{- .Os }}-
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - QUICKSTART.md
+      - USER_TOKEN_SETUP.md
+      - MANIFEST_SETUP.md
+      - LICENSE*
+      - slack-manifest-*.yaml
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'merge conflict'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Enhancements'
+      regexp: '^.*?(enhance|improve)(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: ulfschnabel
+    name: slka
+  draft: false
+  prerelease: auto
+  name_template: "{{.Version}}"
+  header: |
+    ## slka {{.Version}}
+
+    Slack CLI for Agentic Workflows
+
+    ### Installation
+
+    Download the appropriate binary for your platform and make it executable:
+
+    ```bash
+    # Linux AMD64
+    tar -xzf slka-{{.Version}}-linux-amd64.tar.gz
+    chmod +x slka
+    sudo mv slka /usr/local/bin/
+
+    # macOS ARM64 (Apple Silicon)
+    tar -xzf slka-{{.Version}}-darwin-arm64.tar.gz
+    chmod +x slka
+    sudo mv slka /usr/local/bin/
+
+    # Windows
+    # Extract slka-{{.Version}}-windows-amd64.zip and add to PATH
+    ```
+
+    ### Quick Start
+
+    ```bash
+    # Initialize configuration
+    slka config init
+
+    # List channels
+    slka channels list
+
+    # Get channel history
+    slka channels history general --limit 10
+
+    # Send a message (with dry-run)
+    slka message send general "Hello from slka!" --dry-run
+    ```
+
+    For detailed documentation, see the included README.md and QUICKSTART.md files.
+
+    ### What's Changed
+  footer: |
+
+    ---
+
+    **Full Changelog**: https://github.com/ulfschnabel/slka/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    For setup guides:
+    - [Quick Start Guide](https://github.com/ulfschnabel/slka/blob/main/QUICKSTART.md)
+    - [User Token Setup](https://github.com/ulfschnabel/slka/blob/main/USER_TOKEN_SETUP.md)
+    - [Manifest Setup](https://github.com/ulfschnabel/slka/blob/main/MANIFEST_SETUP.md)
+    - [AI Agent Guide](https://github.com/ulfschnabel/slka/blob/main/AI_AGENT_GUIDE.md)
+
+# Homebrew tap (optional - for future use)
+# brews:
+#   - name: slka
+#     homepage: https://github.com/ulfschnabel/slka
+#     description: Slack CLI for Agentic Workflows
+#     license: MIT
+#     repository:
+#       owner: ulfschnabel
+#       name: homebrew-tap
