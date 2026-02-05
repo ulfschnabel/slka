@@ -1,0 +1,30 @@
+display_information:
+  name: slka (Personal)
+  description: Personal Slack automation with slka CLI - messages appear as you
+  background_color: "#2c2d30"
+features:
+  bot_user:
+    display_name: slka
+    always_online: false
+oauth_config:
+  scopes:
+    user:
+      # Read scopes
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - im:read
+      - im:history
+      - mpim:read
+      - mpim:history
+      - users:read
+      # Write scopes
+      - chat:write
+      - channels:manage
+      - groups:write
+      - reactions:write
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
