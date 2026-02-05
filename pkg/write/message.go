@@ -62,12 +62,17 @@ var messageSendCmd = &cobra.Command{
 		}
 
 		// Send message
-		channel, ts, err := slackClient.PostMessage(
-			channelID,
+		msgOptions := []slack.MsgOption{
 			slack.MsgOptionText(formattedText, false),
-			slack.MsgOptionDisableLinkUnfurl(!unfurlLinks),
-			slack.MsgOptionDisableMediaUnfurl(!unfurlMedia),
-		)
+		}
+		if !unfurlLinks {
+			msgOptions = append(msgOptions, slack.MsgOptionDisableLinkUnfurl())
+		}
+		if !unfurlMedia {
+			msgOptions = append(msgOptions, slack.MsgOptionDisableMediaUnfurl())
+		}
+
+		channel, ts, err := slackClient.PostMessage(channelID, msgOptions...)
 
 		if err != nil {
 			result := output.Error("send_failed", err.Error(), "Check your permissions and token")

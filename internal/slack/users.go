@@ -3,8 +3,6 @@ package slack
 import (
 	"fmt"
 	"strings"
-
-	"github.com/slack-go/slack"
 )
 
 // UserService handles user-related operations
