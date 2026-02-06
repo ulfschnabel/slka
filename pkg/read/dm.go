@@ -139,11 +139,11 @@ func init() {
 	dmCmd.AddCommand(dmHistoryCmd)
 
 	// List flags
-	dmListCmd.Flags().Int("limit", 0, "Maximum number of DM conversations to return")
-	dmListCmd.Flags().String("filter", "", "Filter conversations by user (name, email, or ID)")
+	dmListCmd.Flags().Int("limit", 0, "Maximum number of DM conversations to return (0 = unlimited)")
+	dmListCmd.Flags().String("filter", "", "Filter conversations by user (accepts: username 'alice', email 'alice@example.com', or user ID 'U123456')")
 
 	// History flags
-	dmHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
-	dmHistoryCmd.Flags().String("until", "", "Only messages before this timestamp")
+	dmHistoryCmd.Flags().String("since", "", "Only messages after this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
+	dmHistoryCmd.Flags().String("until", "", "Only messages before this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
 	dmHistoryCmd.Flags().Int("limit", 100, "Maximum number of messages")
 }

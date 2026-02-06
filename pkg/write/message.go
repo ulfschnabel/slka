@@ -237,9 +237,9 @@ func init() {
 	messageCmd.AddCommand(messageEditCmd)
 
 	// Send flags
-	messageSendCmd.Flags().Bool("unfurl-links", true, "Enable link previews")
-	messageSendCmd.Flags().Bool("unfurl-media", true, "Enable media previews")
+	messageSendCmd.Flags().Bool("unfurl-links", true, "Enable link previews (shows website preview cards, default: true)")
+	messageSendCmd.Flags().Bool("unfurl-media", true, "Enable media previews (shows embedded images/videos, default: true)")
 
 	// Reply flags
-	messageReplyCmd.Flags().Bool("broadcast", false, "Also post to channel (not just thread)")
+	messageReplyCmd.Flags().Bool("broadcast", false, "Also post reply to main channel (not just in thread, default: false)")
 }

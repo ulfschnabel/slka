@@ -203,14 +203,14 @@ func init() {
 	channelsCmd.AddCommand(channelsMembersCmd)
 
 	// List flags
-	channelsListCmd.Flags().Bool("include-archived", false, "Include archived channels")
-	channelsListCmd.Flags().String("type", "all", "Filter by type: public, private, all")
-	channelsListCmd.Flags().Int("limit", 0, "Maximum number of channels to return")
-	channelsListCmd.Flags().String("filter", "", "Filter channels by name (case-insensitive substring match)")
+	channelsListCmd.Flags().Bool("include-archived", false, "Include archived channels in results")
+	channelsListCmd.Flags().String("type", "all", "Filter by type: public, private, or all (default: all)")
+	channelsListCmd.Flags().Int("limit", 0, "Maximum number of channels to return (0 = unlimited)")
+	channelsListCmd.Flags().String("filter", "", "Filter channels by name substring (case-insensitive, e.g., 'eng' matches 'engineering')")
 
 	// History flags
-	channelsHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
-	channelsHistoryCmd.Flags().String("until", "", "Only messages before this timestamp")
+	channelsHistoryCmd.Flags().String("since", "", "Only messages after this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
+	channelsHistoryCmd.Flags().String("until", "", "Only messages before this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
 	channelsHistoryCmd.Flags().Int("limit", 100, "Maximum number of messages")
 	channelsHistoryCmd.Flags().Bool("include-threads", false, "Include thread replies inline")
 

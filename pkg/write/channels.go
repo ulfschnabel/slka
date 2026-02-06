@@ -358,7 +358,7 @@ func init() {
 	channelsCmd.AddCommand(channelsSetDescriptionCmd)
 
 	// Create flags
-	channelsCreateCmd.Flags().Bool("private", false, "Create as private channel")
-	channelsCreateCmd.Flags().String("description", "", "Set channel purpose/description")
-	channelsCreateCmd.Flags().String("topic", "", "Set channel topic")
+	channelsCreateCmd.Flags().Bool("private", false, "Create as private channel (default: false, creates public channel)")
+	channelsCreateCmd.Flags().String("description", "", "Set channel purpose/description text (optional)")
+	channelsCreateCmd.Flags().String("topic", "", "Set channel topic text (optional)")
 }
