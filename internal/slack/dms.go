@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -9,9 +10,10 @@ import (
 
 // DMInfo represents a direct message conversation
 type DMInfo struct {
-	ID       string `json:"id"`
-	UserID   string `json:"user_id"`
-	UserName string `json:"user_name,omitempty"`
+	ID        string   `json:"id"`
+	Type      string   `json:"type"` // "im" or "mpim"
+	UserIDs   []string `json:"user_ids"`
+	UserNames []string `json:"user_names,omitempty"`
 }
 
 // DMService provides DM operations
@@ -24,10 +26,11 @@ func NewDMService(client Client) *DMService {
 	return &DMService{client: client}
 }
 
-// List returns all DM conversations
+// List returns all DM conversations (both 1-on-1 and group)
 func (s *DMService) List(limit int) ([]DMInfo, error) {
+	// Get both im and mpim conversations
 	params := &slack.GetConversationsParameters{
-		Types: []string{"im"},
+		Types: []string{"im", "mpim"},
 		Limit: limit,
 	}
 
@@ -39,14 +42,32 @@ func (s *DMService) List(limit int) ([]DMInfo, error) {
 	dms := make([]DMInfo, 0, len(channels))
 	for _, channel := range channels {
 		dm := DMInfo{
-			ID:     channel.ID,
-			UserID: channel.User,
+			ID:   channel.ID,
+			Type: "im",
 		}
 
-		// Try to get user name
-		if channel.User != "" {
-			if user, err := s.client.GetUserInfo(channel.User); err == nil {
-				dm.UserName = user.Name
+		// For regular DMs (im type)
+		if channel.IsIM {
+			dm.UserIDs = []string{channel.User}
+			// Try to get user name
+			if channel.User != "" {
+				if user, err := s.client.GetUserInfo(channel.User); err == nil {
+					dm.UserNames = []string{user.Name}
+				}
+			}
+		} else if channel.IsMpIM {
+			// For group DMs (mpim type)
+			dm.Type = "mpim"
+			// Get members from the conversation
+			// Note: channel.Members might not be populated, may need to fetch separately
+			if len(channel.Members) > 0 {
+				dm.UserIDs = channel.Members
+				// Try to get user names
+				for _, userID := range channel.Members {
+					if user, err := s.client.GetUserInfo(userID); err == nil {
+						dm.UserNames = append(dm.UserNames, user.Name)
+					}
+				}
 			}
 		}
 
@@ -92,23 +113,49 @@ func (s *DMService) ResolveUser(userArg string) (string, error) {
 	return "", fmt.Errorf("user not found: %s", userArg)
 }
 
-// GetHistory gets the message history of a DM conversation with a user
-func (s *DMService) GetHistory(userArg string, options HistoryOptions) ([]MessageInfo, error) {
-	// Resolve user to ID
-	userID, err := s.ResolveUser(userArg)
+// ResolveUsers converts comma-separated user identifiers to user IDs
+func (s *DMService) ResolveUsers(usersArg string) ([]string, error) {
+	// Split by comma and trim spaces
+	userArgs := strings.Split(usersArg, ",")
+	userIDs := make([]string, 0, len(userArgs))
+
+	for _, userArg := range userArgs {
+		userArg = strings.TrimSpace(userArg)
+		if userArg == "" {
+			continue
+		}
+
+		userID, err := s.ResolveUser(userArg)
+		if err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("no valid users specified")
+	}
+
+	return userIDs, nil
+}
+
+// GetHistory gets the message history of a DM conversation
+func (s *DMService) GetHistory(usersArg string, options HistoryOptions) ([]MessageInfo, error) {
+	// Resolve users to IDs
+	userIDs, err := s.ResolveUsers(usersArg)
 	if err != nil {
 		return nil, err
 	}
 
-	// Open/get the DM conversation
+	// Open/get the DM conversation (works for both im and mpim)
 	conv, _, _, err := s.client.OpenConversation(&slack.OpenConversationParameters{
-		Users: []string{userID},
+		Users: userIDs,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DM with user: %w", err)
+		return nil, fmt.Errorf("failed to open DM: %w", err)
 	}
 
-	// Get conversation history using existing channel service patterns
+	// Get conversation history
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: conv.ID,
 		Limit:     options.Limit,
@@ -134,11 +181,11 @@ func (s *DMService) GetHistory(userArg string, options HistoryOptions) ([]Messag
 	return messages, nil
 }
 
-// SendDM sends a direct message to a user
-func (s *DMService) SendDM(userID, text string, unfurlLinks, unfurlMedia bool) (string, string, error) {
-	// Open/get the DM conversation
+// SendDM sends a direct message to one or more users
+func (s *DMService) SendDM(userIDs []string, text string, unfurlLinks, unfurlMedia bool) (string, string, error) {
+	// Open/get the DM conversation (creates group DM if multiple users)
 	conv, _, _, err := s.client.OpenConversation(&slack.OpenConversationParameters{
-		Users: []string{userID},
+		Users: userIDs,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to open DM: %w", err)
@@ -165,10 +212,10 @@ func (s *DMService) SendDM(userID, text string, unfurlLinks, unfurlMedia bool) (
 }
 
 // ReplyInDM replies to a message in a DM thread
-func (s *DMService) ReplyInDM(userID, threadTS, text string, unfurlLinks, unfurlMedia bool) (string, string, error) {
+func (s *DMService) ReplyInDM(userIDs []string, threadTS, text string, unfurlLinks, unfurlMedia bool) (string, string, error) {
 	// Open/get the DM conversation
 	conv, _, _, err := s.client.OpenConversation(&slack.OpenConversationParameters{
-		Users: []string{userID},
+		Users: userIDs,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to open DM: %w", err)
@@ -193,4 +240,55 @@ func (s *DMService) ReplyInDM(userID, threadTS, text string, unfurlLinks, unfurl
 	}
 
 	return channel, timestamp, nil
+}
+
+// FindExistingConversation finds an existing DM/group DM with the specified users
+// Returns conversation ID if found, empty string if not found
+func (s *DMService) FindExistingConversation(userIDs []string) (string, error) {
+	// Sort user IDs for comparison
+	sortedUserIDs := make([]string, len(userIDs))
+	copy(sortedUserIDs, userIDs)
+	sort.Strings(sortedUserIDs)
+
+	// Get all DM conversations
+	convType := "im"
+	if len(userIDs) > 1 {
+		convType = "mpim"
+	}
+
+	params := &slack.GetConversationsParameters{
+		Types: []string{convType},
+	}
+
+	channels, _, err := s.client.GetConversations(params)
+	if err != nil {
+		return "", fmt.Errorf("failed to list conversations: %w", err)
+	}
+
+	// For each conversation, check if user list matches
+	for _, channel := range channels {
+		var convUsers []string
+		if channel.IsIM {
+			convUsers = []string{channel.User}
+		} else if channel.IsMpIM && len(channel.Members) > 0 {
+			convUsers = channel.Members
+		}
+
+		// Sort and compare
+		if len(convUsers) == len(sortedUserIDs) {
+			sort.Strings(convUsers)
+			match := true
+			for i, userID := range sortedUserIDs {
+				if convUsers[i] != userID {
+					match = false
+					break
+				}
+			}
+			if match {
+				return channel.ID, nil
+			}
+		}
+	}
+
+	return "", nil // Not found
 }

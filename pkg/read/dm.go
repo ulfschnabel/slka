@@ -8,20 +8,20 @@ import (
 	"github.com/ulf/slka/internal/slack"
 )
 
-var dmsCmd = &cobra.Command{
-	Use:   "dms",
+var dmCmd = &cobra.Command{
+	Use:   "dm",
 	Short: "Direct message operations",
-	Long:  `Query and inspect direct message conversations`,
+	Long:  `Query, send, and manage direct messages (1-on-1 and group DMs)`,
 }
 
-var dmsListCmd = &cobra.Command{
+var dmListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all DM conversations",
-	Long: `List all direct message conversations.
+	Long: `List all direct message conversations (both 1-on-1 and group DMs).
 
 Examples:
-  slka dms list
-  slka dms list --limit 50`,
+  slka dm list
+  slka dm list --limit 50`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
 
@@ -29,36 +29,36 @@ Examples:
 		dms, err := svc.List(limit)
 
 		if err != nil {
-			result := output.Error("dms_list_failed", err.Error(), "Check your token and permissions")
+			result := output.Error("dm_list_failed", err.Error(), "Check your token and permissions")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
 		result := output.Success(map[string]interface{}{
-			"dms": dms,
+			"conversations": dms,
 		})
 		result.Print(outputPretty)
 		return nil
 	},
 }
 
-var dmsHistoryCmd = &cobra.Command{
-	Use:   "history <user>",
-	Short: "Get DM message history with a user",
-	Long: `Get the message history of a direct message conversation with a user.
+var dmHistoryCmd = &cobra.Command{
+	Use:   "history <users>",
+	Short: "Get DM message history",
+	Long: `Get the message history of a direct message conversation.
 
-User can be specified as:
-- User ID (U123456)
-- Email address (user@example.com)
-- Username (alice)
+Users can be specified as:
+- Single user: alice, user@example.com, U123456
+- Multiple users (group DM): alice,bob,charlie
 
 Examples:
-  slka dms history alice
-  slka dms history user@example.com
-  slka dms history U123456 --limit 50`,
+  slka dm history alice
+  slka dm history user@example.com
+  slka dm history alice,bob,charlie
+  slka dm history U123456,U789012 --limit 50`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		userArg := args[0]
+		usersArg := args[0]
 		sinceStr, _ := cmd.Flags().GetString("since")
 		untilStr, _ := cmd.Flags().GetString("until")
 		limit, _ := cmd.Flags().GetInt("limit")
@@ -90,15 +90,15 @@ Examples:
 			opts.Until = ts
 		}
 
-		messages, err := svc.GetHistory(userArg, opts)
+		messages, err := svc.GetHistory(usersArg, opts)
 		if err != nil {
-			result := output.Error("dm_history_failed", err.Error(), "Check user exists and permissions")
+			result := output.Error("dm_history_failed", err.Error(), "Check users exist and permissions")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
 		result := output.Success(map[string]interface{}{
-			"user":     userArg,
+			"users":    usersArg,
 			"messages": messages,
 		})
 		result.Print(outputPretty)
@@ -107,16 +107,16 @@ Examples:
 }
 
 func init() {
-	// Add dms commands
-	RootCmd.AddCommand(dmsCmd)
-	dmsCmd.AddCommand(dmsListCmd)
-	dmsCmd.AddCommand(dmsHistoryCmd)
+	// Add dm commands
+	RootCmd.AddCommand(dmCmd)
+	dmCmd.AddCommand(dmListCmd)
+	dmCmd.AddCommand(dmHistoryCmd)
 
 	// List flags
-	dmsListCmd.Flags().Int("limit", 0, "Maximum number of DM conversations to return")
+	dmListCmd.Flags().Int("limit", 0, "Maximum number of DM conversations to return")
 
 	// History flags
-	dmsHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
-	dmsHistoryCmd.Flags().String("until", "", "Only messages before this timestamp")
-	dmsHistoryCmd.Flags().Int("limit", 100, "Maximum number of messages")
+	dmHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
+	dmHistoryCmd.Flags().String("until", "", "Only messages before this timestamp")
+	dmHistoryCmd.Flags().Int("limit", 100, "Maximum number of messages")
 }

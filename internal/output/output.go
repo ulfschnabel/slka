@@ -150,11 +150,11 @@ func describeAction(action string, payload map[string]interface{}) string {
 		channel := payload["channel"]
 		return fmt.Sprintf("Send message to %v", channel)
 	case "send_dm":
-		user := payload["user"]
-		return fmt.Sprintf("Send DM to %v", user)
+		users := payload["users"]
+		return fmt.Sprintf("Send DM to %v", users)
 	case "reply_dm":
-		user := payload["user"]
-		return fmt.Sprintf("Reply to DM with %v", user)
+		users := payload["users"]
+		return fmt.Sprintf("Reply to DM with %v", users)
 	case "add_reaction":
 		emoji := payload["emoji"]
 		return fmt.Sprintf("Add reaction :%v:", emoji)

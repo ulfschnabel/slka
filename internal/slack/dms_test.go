@@ -56,8 +56,10 @@ func TestListDMsSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
 	assert.Equal(t, "D123", result[0].ID)
-	assert.Equal(t, "U456", result[0].UserID)
-	assert.Equal(t, "alice", result[0].UserName)
+	assert.Len(t, result[0].UserIDs, 1)
+	assert.Equal(t, "U456", result[0].UserIDs[0])
+	assert.Len(t, result[0].UserNames, 1)
+	assert.Equal(t, "alice", result[0].UserNames[0])
 	mockClient.AssertExpectations(t)
 }
 
@@ -219,7 +221,7 @@ func TestSendDMSuccess(t *testing.T) {
 
 	// Open conversation
 	mockClient.On("OpenConversation", mock.MatchedBy(func(params *slack.OpenConversationParameters) bool {
-		return params.Users[0] == "U456"
+		return len(params.Users) == 1 && params.Users[0] == "U456"
 	})).Return(
 		&slack.Channel{
 			GroupConversation: slack.GroupConversation{
@@ -240,7 +242,7 @@ func TestSendDMSuccess(t *testing.T) {
 		nil,
 	)
 
-	channelID, timestamp, err := svc.SendDM("U456", "Hello there!", false, false)
+	channelID, timestamp, err := svc.SendDM([]string{"U456"}, "Hello there!", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "D123", channelID)
@@ -259,10 +261,84 @@ func TestSendDMOpenConversationFails(t *testing.T) {
 	)
 
 	svc := NewDMService(mockClient)
-	_, _, err := svc.SendDM("U456", "Hello", false, false)
+	_, _, err := svc.SendDM([]string{"U456"}, "Hello", false, false)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to open DM")
+	mockClient.AssertExpectations(t)
+}
+
+func TestResolveUsersMultiple(t *testing.T) {
+	mockClient := new(MockClient)
+
+	// Mock user lookups
+	mockClient.On("GetUserByEmail", "alice").Return(
+		(*slack.User)(nil),
+		errors.New("not_found"),
+	)
+	mockClient.On("GetUsers", mock.Anything).Return(
+		[]slack.User{
+			{ID: "U123", Name: "alice"},
+			{ID: "U456", Name: "bob"},
+		},
+		nil,
+	).Once()
+
+	mockClient.On("GetUserByEmail", "bob").Return(
+		(*slack.User)(nil),
+		errors.New("not_found"),
+	)
+	mockClient.On("GetUsers", mock.Anything).Return(
+		[]slack.User{
+			{ID: "U123", Name: "alice"},
+			{ID: "U456", Name: "bob"},
+		},
+		nil,
+	).Once()
+
+	svc := NewDMService(mockClient)
+	userIDs, err := svc.ResolveUsers("alice,bob")
+
+	assert.NoError(t, err)
+	assert.Len(t, userIDs, 2)
+	assert.Contains(t, userIDs, "U123")
+	assert.Contains(t, userIDs, "U456")
+	mockClient.AssertExpectations(t)
+}
+
+func TestSendGroupDM(t *testing.T) {
+	mockClient := new(MockClient)
+
+	// Open group conversation
+	mockClient.On("OpenConversation", mock.MatchedBy(func(params *slack.OpenConversationParameters) bool {
+		return len(params.Users) == 3
+	})).Return(
+		&slack.Channel{
+			GroupConversation: slack.GroupConversation{
+				Conversation: slack.Conversation{
+					ID:     "G123",
+					IsMpIM: true,
+				},
+			},
+		},
+		false,
+		false,
+		nil,
+	)
+
+	// Send message
+	mockClient.On("PostMessage", "G123", mock.Anything).Return(
+		"G123",
+		"1706123456.789000",
+		nil,
+	)
+
+	svc := NewDMService(mockClient)
+	channelID, timestamp, err := svc.SendDM([]string{"U123", "U456", "U789"}, "Hello team!", false, false)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "G123", channelID)
+	assert.Equal(t, "1706123456.789000", timestamp)
 	mockClient.AssertExpectations(t)
 }
 
@@ -291,7 +367,7 @@ func TestReplyInDMSuccess(t *testing.T) {
 	)
 
 	svc := NewDMService(mockClient)
-	channelID, timestamp, err := svc.ReplyInDM("U456", "1706123456.789000", "Replying!", false, false)
+	channelID, timestamp, err := svc.ReplyInDM([]string{"U456"}, "1706123456.789000", "Replying!", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "D123", channelID)

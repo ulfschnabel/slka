@@ -15,40 +15,39 @@ var dmCmd = &cobra.Command{
 }
 
 var dmSendCmd = &cobra.Command{
-	Use:   "send <user> <text>",
-	Short: "Send a direct message to a user",
-	Long: `Send a direct message to a user.
+	Use:   "send <users> <text>",
+	Short: "Send a direct message",
+	Long: `Send a direct message to one or more users.
 
-User can be specified as:
-- User ID (U123456)
-- Email address (user@example.com)
-- Username (alice)
+Users can be specified as:
+- Single user: alice, user@example.com, U123456
+- Multiple users (group DM): alice,bob,charlie
 
 Examples:
   slka dm send alice "Hello there!"
   slka dm send user@example.com "Quick question..."
-  slka dm send U123456 "Hi!" --dry-run`,
+  slka dm send alice,bob,charlie "Hello team!" --dry-run`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		userArg := args[0]
+		usersArg := args[0]
 		text := args[1]
 		unfurlLinks, _ := cmd.Flags().GetBool("unfurl-links")
 		unfurlMedia, _ := cmd.Flags().GetBool("unfurl-media")
 
-		// Resolve user to ID
+		// Resolve users to IDs (handles single or comma-separated)
 		svc := slackpkg.NewDMService(slackClient)
-		userID, err := svc.ResolveUser(userArg)
+		userIDs, err := svc.ResolveUsers(usersArg)
 		if err != nil {
-			result := output.Error("user_not_found", err.Error(), "Check the user ID, email, or username")
+			result := output.Error("user_not_found", err.Error(), "Check the user IDs, emails, or usernames")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
 		// Prepare payload for approval
 		payload := map[string]interface{}{
-			"user":    userArg,
-			"user_id": userID,
-			"text":    text,
+			"users":    usersArg,
+			"user_ids": userIDs,
+			"text":     text,
 		}
 
 		// Check for dry run
@@ -65,18 +64,18 @@ Examples:
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
-		// Send DM
-		channelID, timestamp, err := svc.SendDM(userID, text, unfurlLinks, unfurlMedia)
+		// Send DM (works for single user or group)
+		channelID, timestamp, err := svc.SendDM(userIDs, text, unfurlLinks, unfurlMedia)
 		if err != nil {
-			result := output.Error("send_dm_failed", err.Error(), "Check your permissions and user ID")
+			result := output.Error("send_dm_failed", err.Error(), "Check your permissions and user IDs")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
 		// Return success
 		result := output.Success(map[string]interface{}{
-			"user":      userArg,
-			"user_id":   userID,
+			"users":     usersArg,
+			"user_ids":  userIDs,
 			"channel":   channelID,
 			"timestamp": timestamp,
 			"text":      text,
@@ -87,40 +86,39 @@ Examples:
 }
 
 var dmReplyCmd = &cobra.Command{
-	Use:   "reply <user> <timestamp> <text>",
+	Use:   "reply <users> <timestamp> <text>",
 	Short: "Reply to a message in a DM thread",
 	Long: `Reply to a specific message in a direct message thread.
 
-User can be specified as:
-- User ID (U123456)
-- Email address (user@example.com)
-- Username (alice)
+Users can be specified as:
+- Single user: alice, user@example.com, U123456
+- Multiple users (group DM): alice,bob,charlie
 
 Examples:
   slka dm reply alice 1706123456.789000 "Good point!"
   slka dm reply user@example.com 1706123456.789000 "Thanks!"
-  slka dm reply U123456 1706123456.789000 "Got it" --dry-run`,
+  slka dm reply alice,bob,charlie 1706123456.789000 "Got it" --dry-run`,
 	Args: cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		userArg := args[0]
+		usersArg := args[0]
 		threadTS := args[1]
 		text := args[2]
 		unfurlLinks, _ := cmd.Flags().GetBool("unfurl-links")
 		unfurlMedia, _ := cmd.Flags().GetBool("unfurl-media")
 
-		// Resolve user to ID
+		// Resolve users to IDs
 		svc := slackpkg.NewDMService(slackClient)
-		userID, err := svc.ResolveUser(userArg)
+		userIDs, err := svc.ResolveUsers(usersArg)
 		if err != nil {
-			result := output.Error("user_not_found", err.Error(), "Check the user ID, email, or username")
+			result := output.Error("user_not_found", err.Error(), "Check the user IDs, emails, or usernames")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
 		// Prepare payload for approval
 		payload := map[string]interface{}{
-			"user":      userArg,
-			"user_id":   userID,
+			"users":     usersArg,
+			"user_ids":  userIDs,
 			"thread_ts": threadTS,
 			"text":      text,
 		}
@@ -140,7 +138,7 @@ Examples:
 		}
 
 		// Reply in DM
-		channelID, timestamp, err := svc.ReplyInDM(userID, threadTS, text, unfurlLinks, unfurlMedia)
+		channelID, timestamp, err := svc.ReplyInDM(userIDs, threadTS, text, unfurlLinks, unfurlMedia)
 		if err != nil {
 			result := output.Error("reply_dm_failed", err.Error(), "Check your permissions and message timestamp")
 			result.Print(outputPretty)
@@ -149,8 +147,8 @@ Examples:
 
 		// Return success
 		result := output.Success(map[string]interface{}{
-			"user":      userArg,
-			"user_id":   userID,
+			"users":     usersArg,
+			"user_ids":  userIDs,
 			"channel":   channelID,
 			"thread_ts": threadTS,
 			"timestamp": timestamp,
