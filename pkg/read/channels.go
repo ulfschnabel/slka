@@ -3,6 +3,7 @@ package read
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,10 +20,17 @@ var channelsCmd = &cobra.Command{
 var channelsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all channels",
+	Long: `List all channels, optionally filtered by name.
+
+Examples:
+  slka channels list
+  slka channels list --filter general
+  slka channels list --filter eng --type public`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		includeArchived, _ := cmd.Flags().GetBool("include-archived")
 		channelType, _ := cmd.Flags().GetString("type")
 		limit, _ := cmd.Flags().GetInt("limit")
+		filter, _ := cmd.Flags().GetString("filter")
 
 		svc := slack.NewChannelService(slackClient)
 		channels, err := svc.List(slack.ListChannelsOptions{
@@ -35,6 +43,18 @@ var channelsListCmd = &cobra.Command{
 			result := output.Error("channels_list_failed", err.Error(), "Check your token and permissions")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
+		}
+
+		// Filter by name if specified (case-insensitive substring match)
+		if filter != "" {
+			filteredChannels := make([]slack.ChannelInfo, 0)
+			filterLower := strings.ToLower(filter)
+			for _, ch := range channels {
+				if strings.Contains(strings.ToLower(ch.Name), filterLower) {
+					filteredChannels = append(filteredChannels, ch)
+				}
+			}
+			channels = filteredChannels
 		}
 
 		result := output.Success(map[string]interface{}{
@@ -186,6 +206,7 @@ func init() {
 	channelsListCmd.Flags().Bool("include-archived", false, "Include archived channels")
 	channelsListCmd.Flags().String("type", "all", "Filter by type: public, private, all")
 	channelsListCmd.Flags().Int("limit", 0, "Maximum number of channels to return")
+	channelsListCmd.Flags().String("filter", "", "Filter channels by name (case-insensitive substring match)")
 
 	// History flags
 	channelsHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
