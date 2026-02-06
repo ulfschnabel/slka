@@ -21,9 +21,12 @@ var dmListCmd = &cobra.Command{
 
 Examples:
   slka dm list
-  slka dm list --limit 50`,
+  slka dm list --limit 50
+  slka dm list --filter alice
+  slka dm list --filter alice@example.com`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
+		filter, _ := cmd.Flags().GetString("filter")
 
 		svc := slack.NewDMService(slackClient)
 		dms, err := svc.List(limit)
@@ -32,6 +35,29 @@ Examples:
 			result := output.Error("dm_list_failed", err.Error(), "Check your token and permissions")
 			result.Print(outputPretty)
 			return fmt.Errorf("exit code %d", result.ExitCode())
+		}
+
+		// Filter by user if specified
+		if filter != "" {
+			// Resolve filter user to ID
+			filterUserID, err := svc.ResolveUser(filter)
+			if err != nil {
+				result := output.Error("user_not_found", err.Error(), "Check the user ID, email, or username")
+				result.Print(outputPretty)
+				return fmt.Errorf("exit code %d", result.ExitCode())
+			}
+
+			// Filter conversations to only those containing the user
+			filteredDMs := make([]slack.DMInfo, 0)
+			for _, dm := range dms {
+				for _, userID := range dm.UserIDs {
+					if userID == filterUserID {
+						filteredDMs = append(filteredDMs, dm)
+						break
+					}
+				}
+			}
+			dms = filteredDMs
 		}
 
 		result := output.Success(map[string]interface{}{
@@ -114,6 +140,7 @@ func init() {
 
 	// List flags
 	dmListCmd.Flags().Int("limit", 0, "Maximum number of DM conversations to return")
+	dmListCmd.Flags().String("filter", "", "Filter conversations by user (name, email, or ID)")
 
 	// History flags
 	dmHistoryCmd.Flags().String("since", "", "Only messages after this timestamp")
