@@ -4,7 +4,7 @@
 
 - Go 1.21 or later
 - Slack workspace for testing
-- Slack app with appropriate bot tokens
+- Slack app with appropriate tokens (user or bot)
 
 ### Initial Setup
 
@@ -21,18 +21,16 @@
    This will:
    - Download dependencies
    - Run tests
-   - Build local binaries
+   - Build local binary
 
 ### Project Structure
 
 ```
 slka/
 ├── cmd/
-│   ├── slka-read/         # Read CLI entry point
-│   └── slka-write/        # Write CLI entry point
+│   └── slka/              # Main CLI entry point
 ├── internal/              # Internal packages (not importable)
 │   ├── config/           # Configuration management
-│   ├── auth/             # Authentication (future)
 │   ├── approval/         # Human approval system
 │   ├── links/            # Link parsing/formatting
 │   ├── output/           # JSON output formatting
@@ -40,12 +38,24 @@ slka/
 │       ├── client.go     # Client interface
 │       ├── mock_client.go # Mock for testing
 │       ├── channels.go   # Channel operations
+│       ├── dms.go        # DM operations
+│       ├── reactions.go  # Reaction operations
 │       └── users.go      # User operations
 ├── pkg/                  # Public packages
-│   ├── read/             # slka-read commands
-│   └── write/            # slka-write commands
+│   ├── read/             # Read commands
+│   │   ├── channels.go   # Channel queries
+│   │   ├── dm.go         # DM queries
+│   │   ├── reaction.go   # Reaction queries
+│   │   └── users.go      # User queries
+│   └── write/            # Write commands
+│       ├── channels.go   # Channel management
+│       ├── dm.go         # DM sending
+│       ├── message.go    # Message operations
+│       ├── reaction.go   # Reaction management
+│       └── config.go     # Config management
 ├── go.mod                # Go module definition
 ├── Makefile             # Build automation
+├── .goreleaser.yaml     # Release configuration
 └── README.md            # User documentation
 ```
 
@@ -62,7 +72,8 @@ make test-coverage
 
 # Run specific package tests
 go test -v ./internal/links/
-go test -v ./internal/config/
+go test -v ./internal/slack/
+go test -v ./pkg/read/
 ```
 
 #### Building
@@ -71,23 +82,23 @@ go test -v ./internal/config/
 # Build for current platform
 make build-local
 
-# Build for all platforms
-make build
+# Test snapshot build with goreleaser
+goreleaser build --snapshot --clean
 
-# Install to GOPATH/bin
-make install
+# The binary will be in dist/
+./dist/slka channels list
 ```
 
 #### Running Locally
 
 ```bash
 # From source
-go run ./cmd/slka-read channels list
-go run ./cmd/slka-write message send general "Hello"
+go run ./cmd/slka channels list
+go run ./cmd/slka message send general "Hello"
 
 # From dist/
-./dist/slka-read channels list
-./dist/slka-write --help
+./dist/slka channels list
+./dist/slka --help
 ```
 
 ### Test-Driven Development
@@ -171,7 +182,6 @@ Test configuration is loaded from `~/.config/slka/config.json`:
 {
   "read_token": "xoxb-test-read-token",
   "write_token": "xoxb-test-write-token",
-  "user_token": "xoxp-test-user-token",
   "require_approval": true
 }
 ```
@@ -190,7 +200,7 @@ Enable verbose output:
 
 ```bash
 # Run with verbose logging
-go run ./cmd/slka-read channels list --output-pretty
+go run ./cmd/slka channels list --output-pretty
 
 # Debug tests
 go test -v -run TestSpecificTest ./internal/config/
@@ -200,7 +210,7 @@ go test -v -run TestSpecificTest ./internal/config/
 
 - Follow standard Go conventions
 - Use `gofmt` for formatting
-- Run linter: `make lint`
+- Run linter: `make lint` (if configured)
 - Keep functions small and focused
 - Write descriptive test names
 
@@ -225,23 +235,81 @@ go mod download
 
 ### Release Process
 
-1. Update version in code
-2. Tag release: `git tag v1.0.0`
-3. Build all platforms: `make build`
-4. Create GitHub release with binaries
-5. Update README with release notes
+Releases are automated with GoReleaser and GitHub Actions:
+
+1. **Tag a release:**
+   ```bash
+   git tag v0.3.1
+   git push origin v0.3.1
+   ```
+
+2. **GitHub Actions automatically:**
+   - Builds for all platforms
+   - Creates release on GitHub
+   - Uploads binaries and archives
+   - Generates changelog
+
+3. **Manual release (if needed):**
+   ```bash
+   # Test locally first
+   goreleaser build --snapshot --clean
+
+   # Release (requires GITHUB_TOKEN)
+   goreleaser release --clean
+   ```
+
+See [RELEASING.md](RELEASING.md) for details.
+
+### Testing New Features
+
+When adding new features (like DMs, reactions):
+
+1. **Service layer first** - Implement in `internal/slack/`
+2. **Write comprehensive tests** - Cover all edge cases
+3. **Add read commands** - In `pkg/read/`
+4. **Add write commands** - In `pkg/write/` with approval
+5. **Update documentation** - All relevant .md files
+
+Example workflow:
+```bash
+# 1. Create service with tests
+vim internal/slack/newfeature.go
+vim internal/slack/newfeature_test.go
+go test ./internal/slack -v
+
+# 2. Add commands
+vim pkg/read/newfeature.go
+vim pkg/write/newfeature.go
+
+# 3. Build and test
+go build ./cmd/slka
+./slka newfeature --help
+```
 
 ### Contributing
 
-1. Write tests first
+1. Write tests first (TDD)
 2. Keep changes focused
 3. Update documentation
-4. Ensure all tests pass
-5. Run linter
+4. Ensure all tests pass: `make test`
+5. Build successfully: `make build-local`
+
+### Project Testing Status
+
+All core modules have comprehensive test suites:
+
+- ✅ `internal/links/` - Link parsing/formatting
+- ✅ `internal/output/` - Output formatting
+- ✅ `internal/config/` - Configuration
+- ✅ `internal/approval/` - Approval system
+- ✅ `internal/slack/channels.go` - Channel operations
+- ✅ `internal/slack/dms.go` - DM operations
+- ✅ `internal/slack/reactions.go` - Reaction operations
 
 ### Resources
 
 - [Slack API Documentation](https://api.slack.com/)
 - [Cobra CLI Framework](https://github.com/spf13/cobra)
 - [Testify Testing Library](https://github.com/stretchr/testify)
+- [GoReleaser Documentation](https://goreleaser.com/)
 - [Go Testing](https://golang.org/pkg/testing/)

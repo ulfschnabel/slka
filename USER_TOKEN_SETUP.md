@@ -27,10 +27,18 @@ Guide for using slka to control **your own Slack account** (not a bot).
 ### Step 1: Create a Slack App
 
 1. Go to: **https://api.slack.com/apps**
+2. Click **"Create New App"** → **"From an app manifest"**
+3. Select your workspace
+4. Copy the contents of `slack-manifest-user-token.yaml` (included in release)
+5. Click **"Create"**
+
+**Or create from scratch:**
+1. Go to: **https://api.slack.com/apps**
 2. Click **"Create New App"** → **"From scratch"**
 3. App Name: `slka-personal` (or any name)
 4. Select your workspace
 5. Click **"Create App"**
+6. Continue to Step 2 to add scopes manually
 
 ### Step 2: Add User Token Scopes
 
@@ -40,28 +48,28 @@ Guide for using slka to control **your own Slack account** (not a bot).
 2. Scroll down to **"User Token Scopes"** section
 3. Click **"Add an OAuth Scope"** and add:
 
-#### Required Scopes for slka-read:
+#### Required Scopes:
 ```
-channels:read
-channels:history
-groups:read
-groups:history
-im:read
-im:history
-mpim:read
-mpim:history
-users:read
+channels:read       - List public channels
+channels:history    - Read channel messages
+channels:manage     - Create/archive channels
+groups:read         - List private channels
+groups:history      - Read private messages
+groups:write        - Manage private channels
+im:read            - List DMs
+im:history         - Read DM messages
+im:write           - Send DMs
+mpim:read          - List group DMs
+mpim:history       - Read group DM messages
+mpim:write         - Send group DMs
+users:read         - List users
+users:read.email   - Look up users by email
+chat:write         - Send messages
+reactions:read     - Read reactions on messages
+reactions:write    - Add/remove reactions
 ```
 
-#### Additional Scopes for slka-write:
-```
-chat:write
-channels:manage
-groups:write
-reactions:write
-```
-
-#### Full Recommended List:
+#### Scope Descriptions:
 ```
 channels:read       - List channels
 channels:history    - Read channel messages
@@ -69,12 +77,16 @@ channels:manage     - Create/archive channels
 groups:read         - List private channels
 groups:history      - Read private messages
 groups:write        - Manage private channels
-im:read            - List DMs
-im:history         - Read DMs
+im:read            - List DMs (1-on-1)
+im:history         - Read DM messages
+im:write           - Send DMs
 mpim:read          - List group DMs
-mpim:history       - Read group DMs
+mpim:history       - Read group DM messages
+mpim:write         - Send group DMs
 users:read         - List users
+users:read.email   - Look up users by email
 chat:write         - Send messages
+reactions:read     - Read reactions
 reactions:write    - Add/remove reactions
 ```
 
@@ -96,17 +108,14 @@ Look for: **"User OAuth Token"**
 ### Step 5: Configure slka
 
 ```bash
-cd ~/repos/slka
-
-# Option 1: Interactive setup
-./dist/slka-write config init
+# Interactive setup
+slka config init
 ```
 
 When prompted:
 - **Read token:** Paste your `xoxp-...` token
 - **Write token:** Paste the SAME `xoxp-...` token
-- **User token:** Press Enter (not needed - you're already using a user token)
-- **Require approval:** Choose yes or no
+- **Require approval:** Choose yes or no (recommended: yes)
 
 **Option 2: Manual config:**
 
@@ -135,7 +144,7 @@ export SLKA_WRITE_TOKEN="xoxp-your-token-here"
 Check that slka recognizes your user token:
 
 ```bash
-./dist/slka-write config show
+slka config show
 ```
 
 Output should show:
@@ -156,16 +165,19 @@ Output should show:
 
 ```bash
 # List channels (you're already in them)
-./dist/slka-read channels list
+slka channels list --filter general
 
 # Read messages
-./dist/slka-read channels history general --limit 10
+slka channels history general --limit 10
+
+# List your DMs
+slka dm list
 
 # Send a test message (dry run)
-./dist/slka-write message send general "Test from my account" --dry-run
+slka message send general "Test from my account" --dry-run
 
-# Actually send (if approval is disabled, or approve when prompted)
-./dist/slka-write message send general "Hello from slka!"
+# Actually send (approve when prompted if approval is enabled)
+slka message send general "Hello from slka!"
 ```
 
 ## Key Differences with User Tokens
@@ -177,7 +189,7 @@ With user tokens, you can access any channel you're already in. No `/invite` nee
 ### 2. Messages Appear from You
 
 ```bash
-./dist/slka-write message send general "Hello!"
+slka message send general "Hello!"
 ```
 
 In Slack, this appears as:
@@ -195,7 +207,7 @@ User tokens have different (sometimes stricter) rate limits than bot tokens. Be 
 import time
 
 for channel in channels:
-    result = slka_read(["channels", "history", channel])
+    result = slka(f"channels history {channel}")
     time.sleep(2)  # Wait 2 seconds between requests
 ```
 
@@ -204,6 +216,7 @@ for channel in channels:
 You can only do what your Slack account can do:
 - ✅ Can send to channels you're in
 - ✅ Can read channels you have access to
+- ✅ Can send DMs to anyone
 - ❌ Cannot access channels you're not in
 - ❌ Cannot do things your role doesn't allow
 
@@ -215,6 +228,7 @@ A user token acts as YOU. Anyone with this token can:
 - Read your messages
 - Send messages as you
 - Access channels you're in
+- Send DMs on your behalf
 - Do anything you can do in Slack
 
 **Protect it like your password!**
@@ -267,8 +281,8 @@ A user token acts as YOU. Anyone with this token can:
 # Get messages from channels you follow
 YESTERDAY=$(date -d 'yesterday 9am' +%s)
 
-./dist/slka-read channels history general --since $YESTERDAY > daily.json
-./dist/slka-read channels history team --since $YESTERDAY >> daily.json
+slka channels history general --since $YESTERDAY > daily.json
+slka channels history team --since $YESTERDAY >> daily.json
 
 # Process with AI and post summary
 # (appears as you posting it)
@@ -278,23 +292,33 @@ YESTERDAY=$(date -d 'yesterday 9am' +%s)
 
 ```python
 # Monitor for @your-name mentions
-messages = slka_read(["channels", "history", "support", "--limit", "50"])
+result = slka("channels history support --limit 50")
+messages = result["data"]["messages"]
 
-for msg in messages["data"]["messages"]:
+for msg in messages:
     if "@yourname" in msg["text"]:
         # Respond as yourself
-        slka_write(["message", "reply", "support", msg["ts"],
-                   "Thanks, looking into it!"])
+        slka(f"message reply support {msg['ts']} 'Thanks, looking into it!'")
 ```
 
 ### Personal Channel Management
 
 ```bash
 # Archive old channels you created
-./dist/slka-write channels archive old-project
+slka channels archive old-project
 
 # Set topics on your channels
-./dist/slka-write channels set-topic my-project "Updated project status"
+slka channels set-topic my-project "Updated project status"
+```
+
+### Send Direct Messages
+
+```bash
+# Send 1-on-1 DM
+slka dm send alice "Quick question about the project"
+
+# Send group DM
+slka dm send alice,bob,charlie "Team sync at 3pm"
 ```
 
 ## Troubleshooting
@@ -338,7 +362,7 @@ Join the channel first:
 
 **Problem:**
 ```bash
-./dist/slka-write config show
+slka config show
 # Shows: "read_token_type": "Bot Token"
 ```
 
@@ -355,7 +379,7 @@ Messages appear from a bot user, not your account.
 **Solution:**
 You're using a bot token. Check:
 ```bash
-./dist/slka-write config show
+slka config show
 ```
 
 Should show `"User Token"`, not `"Bot Token"`.
@@ -369,7 +393,7 @@ Should show `"User Token"`, not `"Bot Token"`.
 export SLKA_WRITE_TOKEN="xoxp-123-456-789-abc"
 
 # Send message
-./dist/slka-write message send general "Meeting at 3pm"
+slka message send general "Meeting at 3pm"
 
 # In Slack:
 # You: Meeting at 3pm
@@ -382,7 +406,7 @@ export SLKA_WRITE_TOKEN="xoxp-123-456-789-abc"
 export SLKA_WRITE_TOKEN="xoxb-123-456-abc"
 
 # Send message
-./dist/slka-write message send general "Meeting at 3pm"
+slka message send general "Meeting at 3pm"
 
 # In Slack:
 # slka [BOT]: Meeting at 3pm
@@ -398,15 +422,16 @@ export SLKA_WRITE_TOKEN="xoxb-123-456-abc"
 | Clear bot identity | ❌ | ✅ |
 | Share with team | ❌ | ✅ |
 | Access your channels | ✅ | Use either |
+| Send personal DMs | ✅ | Use either |
 
 ## Next Steps
 
+- **[MANIFEST_SETUP.md](MANIFEST_SETUP.md)** - Easy 2-minute setup with manifest
 - **[QUICKSTART.md](QUICKSTART.md)** - General getting started guide
 - **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** - Build AI automations
-- **[examples/](examples/)** - Example scripts (work with both token types)
 
 ## Support
 
 Questions about user tokens:
 - Slack API docs: https://api.slack.com/authentication/token-types
-- File an issue: https://github.com/ulf/slka/issues
+- File an issue: https://github.com/ulfschnabel/slka/issues

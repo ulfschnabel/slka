@@ -1,38 +1,68 @@
 # slka - AI Agent Guide
 
-This guide explains how AI agents (like Claude, GPT, or custom LLMs) should use the slka CLI tools to interact with Slack.
+Complete guide for AI agents (Claude, GPT, custom LLMs) using slka to interact with Slack.
 
 ## Overview
 
 `slka` is designed specifically for AI agents with:
 - **JSON output** for all commands (easy parsing)
-- **Read/write separation** for safety
+- **Unified binary** with both read and write operations
 - **Human approval mode** for sensitive operations
-- **Structured error responses** with suggestions
-- **Both user and bot token support** for flexibility
+- **Token-efficient filtering** to reduce API calls and context usage
+- **Structured error responses** with actionable suggestions
+- **User and bot token support** for flexibility
+
+## Quick Start for AI Agents
+
+```python
+import json, subprocess
+
+def slka(cmd):
+    result = subprocess.run(["slka"] + cmd.split(), capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+# List channels (filtered for efficiency)
+channels = slka("channels list --filter engineering")
+
+# Send message (may require approval)
+response = slka("message send general 'Build complete!'")
+
+# Check if message was acknowledged
+ack = slka("reaction check-acknowledged general 1234567890.123")
+```
 
 ## Token Types
 
-slka works with both token types:
-
-| Token Type | Prefix | Messages Appear From | Best For |
-|------------|--------|---------------------|----------|
-| **User Token** | `xoxp-` | The user's account | Personal AI assistants |
-| **Bot Token** | `xoxb-` | A bot user | Team automation |
+| Token Type | Prefix | Messages From | Best For |
+|------------|--------|---------------|----------|
+| **User Token** | `xoxp-` | User's account | Personal AI assistants |
+| **Bot Token** | `xoxb-` | Bot user | Team automation |
 
 **For AI agents:**
-- Use **user tokens** if the AI acts on behalf of a specific person
-- Use **bot tokens** if the AI acts as a separate entity
+- User tokens: AI acts on behalf of a specific person
+- Bot tokens: AI acts as separate entity
 
-Setup guides:
-- **[USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)** - User tokens
-- **[SLACK_SETUP.md](SLACK_SETUP.md)** - Bot tokens
+Setup: See [MANIFEST_SETUP.md](MANIFEST_SETUP.md) for easy 2-minute setup.
 
-## Core Principles for AI Agents
+## Core Principles
 
-### 1. Always Parse JSON Output
+### 1. Use Filtering for Token Efficiency
 
-Every command returns JSON. Parse it to extract data:
+**Critical for AI agents:** Always filter when searching.
+
+```python
+# ❌ BAD: Returns 100+ channels (~10,000 tokens)
+channels = slka("channels list")
+
+# ✅ GOOD: Returns 2-3 channels (~300 tokens)  
+channels = slka("channels list --filter backend")
+```
+
+**Token savings:** 30x reduction by using `--filter`.
+
+### 2. Always Parse JSON
+
+Every command returns structured JSON:
 
 ```json
 {
@@ -43,9 +73,289 @@ Every command returns JSON. Parse it to extract data:
 }
 ```
 
-### 2. Check the `ok` Field
+### 3. Check the `ok` Field
 
-Before using data, verify the operation succeeded:
+Verify success before using data:
+
+```python
+response = slka("channels info general")
+if response["ok"]:
+    channel = response["data"]["channel"]
+else:
+    print(f"Error: {response['error_description']}")
+```
+
+### 4. Handle Approval Workflow
+
+Write operations may require human approval:
+
+```python
+response = slka("message send general 'Deploy complete'")
+if response["ok"]:
+    print("Sent!")
+elif response.get("requires_approval"):
+    print("Waiting for human approval...")
+else:
+    print(f"Failed: {response['error_description']}")
+```
+
+## Command Reference
+
+### Channels
+
+#### List Channels (Filtered - Recommended)
+```bash
+slka channels list --filter engineering
+slka channels list --filter backend --type private
+```
+
+Returns:
+```json
+{
+  "ok": true,
+  "data": {
+    "channels": [
+      {
+        "id": "C123",
+        "name": "engineering",
+        "is_private": false,
+        "num_members": 25
+      }
+    ]
+  }
+}
+```
+
+#### Get Channel History
+```bash
+slka channels history general --limit 50
+slka channels history general --since 1706123456
+```
+
+### Direct Messages
+
+#### List DMs (Filtered - Recommended)
+```bash
+slka dm list --filter alice
+```
+
+Returns both 1-on-1 and group DMs with that user:
+```json
+{
+  "ok": true,
+  "data": {
+    "conversations": [
+      {
+        "id": "D123",
+        "type": "im",
+        "user_ids": ["U456"],
+        "user_names": ["alice"]
+      },
+      {
+        "id": "G789",
+        "type": "mpim",
+        "user_ids": ["U456", "U789", "U012"],
+        "user_names": ["alice", "bob", "charlie"]
+      }
+    ]
+  }
+}
+```
+
+#### Send DM (1-on-1 or Group)
+```bash
+# Single user
+slka dm send alice "Quick question..."
+
+# Group DM
+slka dm send alice,bob,charlie "Team meeting at 3"
+```
+
+#### Get DM History
+```bash
+slka dm history alice
+slka dm history alice,bob,charlie  # Group DM
+```
+
+### Messages
+
+#### Send Message
+```bash
+slka message send general "Build passed!"
+slka message send general "Deploy ready" --dry-run
+```
+
+#### Reply to Thread
+```bash
+slka message reply general 1706123456.789 "Looks good!"
+```
+
+#### Edit Message
+```bash
+slka message edit general 1706123456.789 "Updated text"
+```
+
+### Reactions
+
+#### Check if Message Was Acknowledged
+```bash
+slka reaction check-acknowledged general 1706123456.789
+```
+
+Returns:
+```json
+{
+  "ok": true,
+  "data": {
+    "acknowledgment": {
+      "is_acknowledged": true,
+      "reacted_users": ["U456", "U789"],
+      "reaction_count": 2,
+      "reply_count": 1,
+      "has_replies": true,
+      "has_reactions": true,
+      "message_author": "U123"
+    }
+  }
+}
+```
+
+**Acknowledgment = any reaction OR reply from someone other than message author.**
+
+#### List Reactions
+```bash
+slka reaction list general 1706123456.789
+```
+
+#### Add/Remove Reactions
+```bash
+slka reaction add general 1706123456.789 thumbsup
+slka reaction remove general 1706123456.789 eyes
+```
+
+### Users
+
+#### Lookup User
+```bash
+slka users lookup alice@example.com
+slka users lookup alice
+```
+
+#### List Users
+```bash
+slka users list
+slka users list --limit 100
+```
+
+## AI Agent Workflows
+
+### Workflow 1: Monitor Channel and Respond
+
+```python
+def monitor_channel(channel, keywords):
+    # Get recent messages (filtered by time)
+    from datetime import datetime, timedelta
+    since = int((datetime.now() - timedelta(hours=1)).timestamp())
+    
+    result = slka(f"channels history {channel} --since {since}")
+    if not result["ok"]:
+        return
+    
+    for msg in result["data"]["messages"]:
+        if any(kw in msg["text"].lower() for kw in keywords):
+            # Respond to keyword match
+            slka(f"message reply {channel} {msg['ts']} 'I can help with that!'")
+```
+
+### Workflow 2: Send and Wait for Acknowledgment
+
+```python
+def send_and_wait_for_ack(channel, message, timeout=300):
+    import time
+    
+    # Send message
+    sent = slka(f"message send {channel} '{message}'")
+    if not sent["ok"]:
+        return False, "Failed to send"
+    
+    ts = sent["data"]["timestamp"]
+    
+    # Poll for acknowledgment
+    start = time.time()
+    while time.time() - start < timeout:
+        ack = slka(f"reaction check-acknowledged {channel} {ts}")
+        if ack["ok"] and ack["data"]["acknowledgment"]["is_acknowledged"]:
+            return True, "Acknowledged"
+        time.sleep(10)
+    
+    return False, "Timeout"
+
+# Usage
+success, msg = send_and_wait_for_ack("general", "Deploy ready for review")
+print(msg)
+```
+
+### Workflow 3: Find Channel and Send Update
+
+```python
+def send_project_update(project_name, message):
+    # Find channel (token efficient!)
+    result = slka(f"channels list --filter {project_name}")
+    
+    if not result["ok"] or not result["data"]["channels"]:
+        return False, "Channel not found"
+    
+    channel_id = result["data"]["channels"][0]["id"]
+    
+    # Send message
+    response = slka(f"message send {channel_id} '{message}'")
+    return response["ok"], response.get("error_description", "Success")
+```
+
+### Workflow 4: DM Multiple Users
+
+```python
+def notify_team(users, message):
+    # users can be list: ["alice", "bob", "charlie"]
+    user_list = ",".join(users)
+    
+    result = slka(f"dm send {user_list} '{message}'")
+    return result["ok"]
+
+# Usage
+notify_team(["alice", "bob"], "PR ready for review")
+```
+
+### Workflow 5: Check All DMs for Mentions
+
+```python
+def check_dms_for_mentions(keyword):
+    # Get all DMs
+    result = slka("dm list")
+    if not result["ok"]:
+        return []
+    
+    mentions = []
+    for conv in result["data"]["conversations"]:
+        # Get history
+        user_ids = ",".join(conv["user_ids"]) if len(conv["user_ids"]) > 1 else conv["user_ids"][0]
+        history = slka(f"dm history {user_ids} --limit 50")
+        
+        if history["ok"]:
+            for msg in history["data"]["messages"]:
+                if keyword.lower() in msg["text"].lower():
+                    mentions.append({
+                        "conversation": conv["user_names"],
+                        "message": msg["text"],
+                        "timestamp": msg["ts"]
+                    })
+    
+    return mentions
+```
+
+## Error Handling
+
+### Error Response Format
 
 ```json
 {
@@ -56,768 +366,279 @@ Before using data, verify the operation succeeded:
 }
 ```
 
-### 3. Use Read Operations Freely
+### Common Errors
 
-`slka-read` commands are safe to use without approval:
-- List channels, users, messages
-- Get channel information
-- Fetch message history
+| Error Code | Description | Solution |
+|------------|-------------|----------|
+| `auth_error` | Invalid token | Check token, regenerate if needed |
+| `permission_error` | Missing scope | Add scope to app, reinstall |
+| `channel_not_found` | Channel doesn't exist | Use `channels list` to find it |
+| `user_not_found` | User doesn't exist | Use `users lookup` to verify |
+| `approval_required` | Human approval needed | Wait for user to approve |
+| `rate_limited` | Too many requests | Back off, retry later |
 
-### 4. Request Approval for Write Operations
+### Robust Error Handling
 
-`slka-write` commands may require human approval if configured:
-- Sending messages
-- Creating/modifying channels
-- Adding reactions
-
-## Command Reference for AI Agents
-
-### Reading Slack Data
-
-#### Get Recent Messages from a Channel
-
-```bash
-slka-read channels history general --limit 50
-```
-
-Returns:
-```json
-{
-  "ok": true,
-  "data": {
-    "channel_id": "C123456",
-    "messages": [
-      {
-        "ts": "1706123456.789000",
-        "user": "U123456",
-        "user_name": "johndoe",
-        "text": "Hello world",
-        "reactions": [
-          {"name": "thumbsup", "count": 2, "users": ["U111", "U222"]}
-        ]
-      }
-    ]
-  }
-}
-```
-
-**AI Agent Pattern:**
 ```python
-import json
-import subprocess
-
-result = subprocess.run(
-    ["slka-read", "channels", "history", "general", "--limit", "50"],
-    capture_output=True,
-    text=True
-)
-
-data = json.loads(result.stdout)
-if data["ok"]:
-    messages = data["data"]["messages"]
-    # Process messages...
-else:
-    print(f"Error: {data['error_description']}")
+def robust_slka(cmd, max_retries=3):
+    import time
+    
+    for attempt in range(max_retries):
+        result = slka(cmd)
+        
+        if result["ok"]:
+            return result
+        
+        # Handle specific errors
+        if result["error"] == "rate_limited":
+            time.sleep(5 * (attempt + 1))  # Exponential backoff
+            continue
+        elif result["error"] == "approval_required":
+            print("Waiting for approval...")
+            time.sleep(2)
+            continue
+        else:
+            # Unrecoverable error
+            print(f"Error: {result['error_description']}")
+            return result
+    
+    return {"ok": False, "error": "max_retries_exceeded"}
 ```
 
-#### Get Messages Since a Specific Time
+## Token Efficiency Best Practices
 
-```bash
-# Unix timestamp
-slka-read channels history general --since 1706123456
+### Always Filter Lists
 
-# ISO8601 format
-slka-read channels history general --since 2024-01-24T09:00:00
-```
-
-#### List All Channels
-
-```bash
-slka-read channels list
-```
-
-Returns:
-```json
-{
-  "ok": true,
-  "data": {
-    "channels": [
-      {
-        "id": "C123456",
-        "name": "general",
-        "is_private": false,
-        "is_archived": false,
-        "topic": "Company-wide announcements",
-        "member_count": 42
-      }
-    ]
-  }
-}
-```
-
-#### Find a User
-
-```bash
-# By email (auto-detected)
-slka-read users lookup john@example.com
-
-# By name
-slka-read users lookup johndoe --by name
-```
-
-Returns:
-```json
-{
-  "ok": true,
-  "data": {
-    "user": {
-      "id": "U123456",
-      "name": "johndoe",
-      "real_name": "John Doe",
-      "email": "john@example.com"
-    }
-  }
-}
-```
-
-### Writing to Slack
-
-#### Send a Message
-
-```bash
-slka-write message send general "Deployment to production completed successfully ✓"
-```
-
-**With approval enabled**, the human will see:
-```
-Send message to general: "Deployment to production completed successfully ✓"
-
-Payload:
-{
-  "channel": "C123456",
-  "text": "Deployment to production completed successfully ✓"
-}
-
-Execute this action? [y/N]:
-```
-
-**If approval is denied**, returns:
-```json
-{
-  "ok": false,
-  "requires_approval": true,
-  "action": "send_message",
-  "description": "Send message to general",
-  "payload": {...}
-}
-```
-
-**AI Agent Pattern:**
 ```python
-result = subprocess.run(
-    ["slka-write", "message", "send", "general", "Hello from AI"],
-    capture_output=True,
-    text=True
-)
+# ❌ BAD: Wastes 10,000 tokens
+all_channels = slka("channels list")
+engineering = [c for c in all_channels["data"]["channels"] if "eng" in c["name"]]
 
-data = json.loads(result.stdout)
-if data["ok"]:
-    print(f"Message sent: {data['data']['ts']}")
-elif data.get("requires_approval"):
-    print("Waiting for human approval...")
-    # Human needs to approve in their terminal
-else:
-    print(f"Error: {data['error_description']}")
+# ✅ GOOD: Uses 300 tokens
+engineering = slka("channels list --filter eng")["data"]["channels"]
 ```
 
-#### Use Dry Run to Preview Actions
+### Cache Channel/User IDs
 
-```bash
-slka-write message send general "Test" --dry-run
+```python
+class SlackCache:
+    def __init__(self):
+        self.channels = {}
+        self.users = {}
+    
+    def get_channel_id(self, name):
+        if name not in self.channels:
+            result = slka(f"channels list --filter {name}")
+            if result["ok"] and result["data"]["channels"]:
+                self.channels[name] = result["data"]["channels"][0]["id"]
+        return self.channels.get(name)
+    
+    def get_user_id(self, identifier):
+        if identifier not in self.users:
+            result = slka(f"users lookup {identifier}")
+            if result["ok"]:
+                self.users[identifier] = result["data"]["user"]["id"]
+        return self.users.get(identifier)
+
+cache = SlackCache()
+channel_id = cache.get_channel_id("engineering")
 ```
 
-Returns:
+### Use Limits Appropriately
+
+```python
+# Recent activity only
+recent = slka("channels history general --limit 20")
+
+# Specific time range
+from datetime import datetime, timedelta
+since = int((datetime.now() - timedelta(hours=6)).timestamp())
+result = slka(f"channels history general --since {since} --limit 100")
+```
+
+## Security Best Practices
+
+### Never Log Tokens
+
+```python
+# ❌ BAD
+print(f"Using token: {token}")
+logging.info(f"Token: {token}")
+
+# ✅ GOOD
+print("Token configured")
+logging.info("Authentication successful")
+```
+
+### Use Dry Run for Testing
+
+```python
+# Test command without executing
+preview = slka("message send general 'Test' --dry-run")
+print(f"Would: {preview['description']}")
+
+# Execute if preview looks good
+if user_approves(preview):
+    actual = slka("message send general 'Test'")
+```
+
+### Validate Input
+
+```python
+def safe_send_message(channel, text):
+    # Validate channel exists
+    info = slka(f"channels info {channel}")
+    if not info["ok"]:
+        return False, "Invalid channel"
+    
+    # Sanitize message (remove any token-like strings)
+    if "xox" in text.lower():
+        return False, "Message contains sensitive data"
+    
+    # Send
+    result = slka(f"message send {channel} '{text}'")
+    return result["ok"], result.get("error_description", "Success")
+```
+
+## Response Formats
+
+### Success Response
+
 ```json
 {
-  "ok": false,
-  "dry_run": true,
-  "action": "send_message",
-  "description": "Send message to general: \"Test\"",
-  "payload": {
+  "ok": true,
+  "data": {
+    "timestamp": "1706123456.789",
     "channel": "C123456",
-    "text": "Test"
+    "text": "Message sent"
   }
 }
 ```
 
-**AI Agent Use Case:** Show the human what you plan to do before requesting approval.
-
-#### Format Links Properly
-
-The tool automatically converts Markdown links to Slack format:
-
-```bash
-# Markdown format (converted automatically)
-slka-write message send general "Check out [our docs](https://example.com)"
-
-# Slack native format (passed through)
-slka-write message send general "Check out <https://example.com|our docs>"
-```
-
-Both work correctly.
-
-### Channel Management
-
-#### Create a Channel
-
-```bash
-slka-write channels create project-alpha --description "Alpha project workspace"
-```
-
-#### Archive Inactive Channels
-
-```bash
-slka-write channels archive old-project
-```
-
-## AI Agent Workflows
-
-### Workflow 1: Daily Standup Summary
-
-**Goal:** Summarize yesterday's messages from key channels
-
-```bash
-#!/bin/bash
-# Get timestamp for yesterday 9am
-YESTERDAY=$(date -d 'yesterday 9am' +%s)
-
-# Fetch messages from multiple channels
-slka-read channels history general --since $YESTERDAY > general.json
-slka-read channels history engineering --since $YESTERDAY > engineering.json
-slka-read channels history product --since $YESTERDAY > product.json
-
-# AI agent processes the JSON files and generates summary
-# Then posts summary back to Slack
-slka-write message send daily-standup "$(cat summary.txt)"
-```
-
-**AI Agent Implementation:**
-```python
-import json
-import subprocess
-from datetime import datetime, timedelta
-
-# Get yesterday's timestamp
-yesterday = int((datetime.now() - timedelta(days=1)).replace(hour=9).timestamp())
-
-channels = ["general", "engineering", "product"]
-all_messages = []
-
-for channel in channels:
-    result = subprocess.run(
-        ["slka-read", "channels", "history", channel, "--since", str(yesterday)],
-        capture_output=True,
-        text=True
-    )
-    data = json.loads(result.stdout)
-    if data["ok"]:
-        all_messages.extend(data["data"]["messages"])
-
-# Process messages with AI (your logic here)
-summary = generate_summary(all_messages)
-
-# Post summary
-subprocess.run(
-    ["slka-write", "message", "send", "daily-standup", summary],
-    capture_output=True,
-    text=True
-)
-```
-
-### Workflow 2: Automated Response to Mentions
-
-**Goal:** Monitor channel for mentions and respond appropriately
-
-```bash
-# Get recent messages
-slka-read channels history support --limit 100 > messages.json
-
-# AI agent checks for mentions of the bot
-# Generates appropriate responses
-# Posts replies to threads
-```
-
-**AI Agent Implementation:**
-```python
-def monitor_and_respond(channel, bot_user_id):
-    result = subprocess.run(
-        ["slka-read", "channels", "history", channel, "--limit", "100"],
-        capture_output=True,
-        text=True
-    )
-
-    data = json.loads(result.stdout)
-    if not data["ok"]:
-        return
-
-    for msg in data["data"]["messages"]:
-        # Check if bot was mentioned
-        if bot_user_id in msg["text"]:
-            # Generate response with AI
-            response = generate_response(msg["text"])
-
-            # Reply in thread
-            subprocess.run([
-                "slka-write", "message", "reply",
-                channel,
-                msg["ts"],
-                response
-            ])
-```
-
-### Workflow 3: Channel Cleanup
-
-**Goal:** Find and archive inactive channels
-
-```bash
-# List all channels
-slka-read channels list --include-archived > all_channels.json
-
-# AI agent analyzes activity, identifies stale channels
-# Presents list to human for approval
-# Archives approved channels
-```
-
-**AI Agent Implementation:**
-```python
-import json
-from datetime import datetime, timedelta
-
-# Get all channels
-result = subprocess.run(
-    ["slka-read", "channels", "list"],
-    capture_output=True,
-    text=True
-)
-
-data = json.loads(result.stdout)
-channels = data["data"]["channels"]
-
-stale_channels = []
-threshold = datetime.now() - timedelta(days=90)
-
-for channel in channels:
-    # Get recent history
-    history_result = subprocess.run(
-        ["slka-read", "channels", "history", channel["id"], "--limit", "1"],
-        capture_output=True,
-        text=True
-    )
-
-    history_data = json.loads(history_result.stdout)
-    messages = history_data["data"]["messages"]
-
-    if not messages or is_older_than(messages[0]["ts"], threshold):
-        stale_channels.append(channel)
-
-# Present to human
-print(f"Found {len(stale_channels)} stale channels:")
-for ch in stale_channels:
-    print(f"  - #{ch['name']}")
-
-# Archive with approval
-for ch in stale_channels:
-    subprocess.run([
-        "slka-write", "channels", "archive", ch["id"]
-    ])
-```
-
-### Workflow 4: User Onboarding
-
-**Goal:** Automatically invite new user to relevant channels
-
-```bash
-# Find user
-slka-read users lookup newuser@example.com > user.json
-
-# AI agent determines relevant channels based on role
-# Sends welcome message
-slka-write message send general "Welcome @newuser to the team!"
-```
-
-## Error Handling for AI Agents
-
-### Parse Exit Codes
-
-```python
-result = subprocess.run(["slka-read", "channels", "info", "nonexistent"])
-
-if result.returncode == 0:
-    # Success
-    pass
-elif result.returncode == 2:
-    # Authentication error - check tokens
-    pass
-elif result.returncode == 3:
-    # Permission error - missing Slack scope
-    pass
-elif result.returncode == 4:
-    # Not found - channel/user doesn't exist
-    pass
-elif result.returncode == 5:
-    # Approval required but not given
-    pass
-elif result.returncode == 6:
-    # Rate limited - back off and retry
-    pass
-```
-
-### Handle Common Errors
-
-#### Channel Not Found
+### Error Response
 
 ```json
 {
   "ok": false,
   "error": "channel_not_found",
-  "error_description": "The specified channel does not exist or the bot does not have access",
-  "suggestion": "Check the channel ID or ensure the bot is invited to the channel"
+  "error_description": "The specified channel does not exist",
+  "suggestion": "Check the channel ID"
 }
 ```
 
-**AI Agent Action:**
-- Verify channel name/ID
-- Suggest inviting the bot: `/invite @slka` in the channel
-
-#### Missing Permissions
+### Approval Required Response
 
 ```json
 {
   "ok": false,
-  "error": "missing_scope",
-  "error_description": "The token is missing required scope: chat:write",
-  "suggestion": "Add the chat:write scope to your Slack app and reinstall"
+  "requires_approval": true,
+  "action": "send_message",
+  "description": "Send message to #general",
+  "payload": {
+    "channel": "C123",
+    "text": "Hello"
+  }
 }
 ```
 
-**AI Agent Action:**
-- Inform human that Slack app needs additional permissions
-- Provide link to Slack app settings
+## Exit Codes
 
-#### Rate Limited
+Use exit codes for scripting:
 
-```json
-{
-  "ok": false,
-  "error": "rate_limited",
-  "error_description": "Rate limited by Slack API. Retry after 60 seconds.",
-  "retry_after": 60
-}
-```
-
-**AI Agent Action:**
-- Wait for `retry_after` seconds
-- Retry the request
-- Consider reducing request frequency
-
-## Best Practices for AI Agents
-
-### 1. Always Use `--output-pretty` for Debugging
-
-When debugging, use pretty-printed JSON:
-
-```bash
-slka-read channels list --output-pretty
-```
-
-### 2. Cache Channel/User IDs
-
-Don't look up the same channel ID repeatedly:
+- `0` - Success
+- `1` - General error
+- `2` - Authentication error
+- `3` - Permission error
+- `4` - Not found
+- `5` - Approval required
+- `6` - Rate limited
 
 ```python
-# BAD: Looks up "general" every time
-for i in range(10):
-    subprocess.run(["slka-read", "channels", "history", "general"])
-
-# GOOD: Look up once, cache the ID
-result = subprocess.run(
-    ["slka-read", "channels", "info", "general"],
-    capture_output=True,
-    text=True
-)
-general_id = json.loads(result.stdout)["data"]["channel"]["id"]
-
-# Use the ID directly
-for i in range(10):
-    subprocess.run(["slka-read", "channels", "history", general_id])
-```
-
-### 3. Use Dry Run Before Executing
-
-Show users what you plan to do:
-
-```python
-# First: dry run
-result = subprocess.run(
-    ["slka-write", "message", "send", "general", "Hello", "--dry-run"],
-    capture_output=True,
-    text=True
-)
-
-data = json.loads(result.stdout)
-print(f"Planning to: {data['description']}")
-print(f"Payload: {json.dumps(data['payload'], indent=2)}")
-
-# Then: execute if approved
-subprocess.run(["slka-write", "message", "send", "general", "Hello"])
-```
-
-### 4. Handle Approval Gracefully
-
-When approval is required:
-
-```python
-result = subprocess.run(
-    ["slka-write", "message", "send", "general", "Hello"],
-    capture_output=True,
-    text=True
-)
-
-data = json.loads(result.stdout)
-
-if data.get("requires_approval"):
-    print("⏳ Waiting for human approval in terminal...")
-    print(f"Action: {data['description']}")
-    # Human must approve in the terminal where slka-write is running
-elif data["ok"]:
-    print("✓ Message sent successfully")
-else:
-    print(f"✗ Error: {data['error_description']}")
-```
-
-### 5. Respect Rate Limits
-
-Slack has rate limits. Space out requests:
-
-```python
-import time
-
-channels = ["general", "random", "engineering", "product"]
-
-for channel in channels:
-    subprocess.run(["slka-read", "channels", "history", channel])
-    time.sleep(1)  # Wait 1 second between requests
-```
-
-### 6. Provide Context in Messages
-
-When posting on behalf of a user, make it clear:
-
-```bash
-slka-write message send general "🤖 AI Assistant: Based on recent activity, I recommend..."
-```
-
-### 7. Use Thread Replies for Context
-
-Reply in threads instead of posting to main channel:
-
-```bash
-# Reply to a specific message
-slka-write message reply general 1706123456.789000 "Here's the analysis you requested..."
-```
-
-## Integration Examples
-
-### Python
-
-```python
-import json
 import subprocess
 
-class SlkaClient:
-    def read_messages(self, channel, limit=100):
-        result = subprocess.run(
-            ["slka-read", "channels", "history", channel, "--limit", str(limit)],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+result = subprocess.run(["slka", "channels", "info", "general"])
+if result.returncode == 0:
+    print("Success")
+elif result.returncode == 4:
+    print("Channel not found")
+```
 
-        data = json.loads(result.stdout)
-        if not data["ok"]:
-            raise Exception(f"Failed to read messages: {data.get('error_description')}")
+## Advanced Integration
 
-        return data["data"]["messages"]
+### Async/Concurrent Operations
 
-    def send_message(self, channel, text, dry_run=False):
-        cmd = ["slka-write", "message", "send", channel, text]
-        if dry_run:
-            cmd.append("--dry-run")
+```python
+import concurrent.futures
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False
-        )
-
-        data = json.loads(result.stdout)
-        return data
+def check_multiple_channels(channel_names):
+    def get_history(channel):
+        return slka(f"channels history {channel} --limit 10")
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(get_history, ch): ch for ch in channel_names}
+        results = {}
+        
+        for future in concurrent.futures.as_completed(futures):
+            channel = futures[future]
+            results[channel] = future.result()
+        
+        return results
 
 # Usage
-client = SlkaClient()
-messages = client.read_messages("general", limit=50)
-response = client.send_message("general", "Hello from Python!")
+results = check_multiple_channels(["general", "engineering", "random"])
 ```
 
-### Node.js
+### Webhook Integration
 
-```javascript
-const { execSync } = require('child_process');
+```python
+from flask import Flask, request
 
-class SlkaClient {
-    readMessages(channel, limit = 100) {
-        const result = execSync(
-            `slka-read channels history ${channel} --limit ${limit}`,
-            { encoding: 'utf-8' }
-        );
+app = Flask(__name__)
 
-        const data = JSON.parse(result);
-        if (!data.ok) {
-            throw new Error(`Failed to read messages: ${data.error_description}`);
-        }
+@app.route("/slack-notification", methods=["POST"])
+def handle_notification():
+    data = request.json
+    
+    # Send to Slack
+    result = slka(f"message send general '{data['message']}'")
+    
+    return {"success": result["ok"]}
 
-        return data.data.messages;
-    }
-
-    sendMessage(channel, text, dryRun = false) {
-        const cmd = `slka-write message send ${channel} "${text}"${dryRun ? ' --dry-run' : ''}`;
-        const result = execSync(cmd, { encoding: 'utf-8' });
-        return JSON.parse(result);
-    }
-}
-
-// Usage
-const client = new SlkaClient();
-const messages = client.readMessages('general', 50);
-const response = client.sendMessage('general', 'Hello from Node.js!');
+app.run(port=5000)
 ```
 
-### Shell Script
+## Debugging
+
+### Enable Pretty Output
 
 ```bash
-#!/bin/bash
-
-# Read messages and extract text
-slka-read channels history general --limit 10 | \
-    jq -r '.data.messages[] | "\(.user_name): \(.text)"'
-
-# Send message with error handling
-send_message() {
-    local channel=$1
-    local message=$2
-
-    result=$(slka-write message send "$channel" "$message")
-
-    if echo "$result" | jq -e '.ok' > /dev/null; then
-        echo "✓ Message sent"
-        return 0
-    else
-        error=$(echo "$result" | jq -r '.error_description')
-        echo "✗ Error: $error"
-        return 1
-    fi
-}
-
-send_message "general" "Hello from bash!"
+slka channels list --filter eng --output-pretty
 ```
-
-## Security Considerations for AI Agents
-
-### 1. Never Log Tokens
-
-Don't include tokens in logs or error messages:
-
-```python
-# BAD
-print(f"Using token: {token}")
-
-# GOOD
-print(f"Using token: {mask_token(token)}")
-```
-
-### 2. Validate User Input
-
-If users provide channel names or message content, validate it:
-
-```python
-def sanitize_channel_name(name):
-    # Remove special characters
-    return ''.join(c for c in name if c.isalnum() or c in ['-', '_'])
-```
-
-### 3. Use Read-Only Operations When Possible
-
-Prefer `slka-read` for queries. Only use `slka-write` when necessary.
-
-### 4. Enable Approval Mode in Production
-
-For production AI agents, ensure `require_approval: true` in config.
-
-### 5. Audit Actions
-
-Log all write operations for audit purposes:
-
-```python
-import logging
-
-logging.info(f"AI Agent posting message to {channel}: {message}")
-subprocess.run(["slka-write", "message", "send", channel, message])
-```
-
-## Troubleshooting for AI Agents
 
 ### Check Configuration
 
 ```bash
-slka-write config show
+slka config show
 ```
 
-### Test Connectivity
+### Test Tokens
 
 ```bash
-# Test read token
-slka-read users list --limit 1
+# Test read operations
+slka users list --limit 1
 
-# Test write token (dry run)
-slka-write message send general "Test" --dry-run
+# Test write operations (safe)
+slka message send general "Test" --dry-run
 ```
 
-### Debug with Pretty Output
+## Next Steps
 
-```bash
-slka-read channels list --output-pretty | less
-```
+- **[AI_QUICK_REFERENCE.md](AI_QUICK_REFERENCE.md)** - One-page cheat sheet
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
+- **[README.md](README.md)** - Full feature overview
 
-### Verify Bot Permissions
+## Support
 
-If you get "not in channel" errors:
-1. Go to the Slack channel
-2. Type: `/invite @slka`
-3. Retry the operation
-
-## Summary
-
-**For AI Agents:**
-- ✅ Use `slka-read` freely for queries
-- ✅ Parse JSON output from all commands
-- ✅ Check the `ok` field before using data
-- ✅ Use `--dry-run` to preview write operations
-- ✅ Handle approval requests gracefully
-- ✅ Respect rate limits
-- ✅ Provide clear context in messages
-- ✅ Cache channel/user IDs
-- ✅ Handle errors with suggestions from JSON
-- ✅ Use thread replies for related messages
-
-The tool is designed to make Slack interaction simple and safe for AI agents while maintaining human oversight for sensitive operations.
+Questions or issues:
+- GitHub: https://github.com/ulfschnabel/slka/issues
+- Review error messages and suggestions in JSON responses

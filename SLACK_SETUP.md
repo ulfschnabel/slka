@@ -8,18 +8,21 @@ Step-by-step guide to create a Slack **bot** and get bot tokens.
 
 This guide shows you how to set up a **bot user** for slka. Messages will appear from the bot (not from your personal account).
 
-You need to create a Slack app in your workspace and configure it with the right permissions (scopes). You'll get bot tokens:
-
-- **Read Token** (`xoxb-...`) - For `slka-read` operations
-- **Write Token** (`xoxb-...`) - For `slka-write` operations
-
-(They can be the same token with all scopes, or separate tokens for better security)
+You need to create a Slack app in your workspace and configure it with the right permissions (scopes). You'll get a bot token (`xoxb-...`) that can be used for both read and write operations.
 
 **Bot tokens vs User tokens:**
 - **Bot tokens** (`xoxb-`): Messages appear from a bot user ← This guide
 - **User tokens** (`xoxp-`): Messages appear from your account → [USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)
 
-## Step 1: Create a Slack App
+## Quick Setup with Manifest (Recommended)
+
+**Easiest method:** Use our pre-configured manifest file.
+
+See **[MANIFEST_SETUP.md](MANIFEST_SETUP.md)** for 2-minute setup with all scopes included.
+
+## Manual Setup
+
+### Step 1: Create a Slack App
 
 1. **Go to Slack API Apps page**
    - Visit: https://api.slack.com/apps
@@ -31,7 +34,7 @@ You need to create a Slack app in your workspace and configure it with the right
    - Pick your workspace
    - Click **"Create App"**
 
-## Step 2: Add Bot Token Scopes
+### Step 2: Add Bot Token Scopes
 
 You need to add permissions (scopes) to your app so it can read and write to Slack.
 
@@ -41,35 +44,32 @@ You need to add permissions (scopes) to your app so it can read and write to Sla
 
 3. **Click "Add an OAuth Scope"** and add these scopes:
 
-### For Read Operations (slka-read)
+#### Required Scopes
+
 ```
 channels:read         - List public channels
 channels:history      - Read messages in public channels
+channels:manage       - Create, archive, rename channels
 groups:read          - List private channels
 groups:history       - Read messages in private channels
+groups:write         - Manage private channels
 im:read              - List DMs
 im:history           - Read DM messages
+im:write             - Send DMs
 mpim:read            - List group DMs
 mpim:history         - Read group DM messages
+mpim:write           - Send group DMs
 users:read           - List users, get user info
 users:read.email     - Look up users by email
-reactions:read       - Read reactions on messages
-```
-
-### For Write Operations (slka-write)
-```
 chat:write           - Send messages
 chat:write.public    - Send to channels without joining
+reactions:read       - Read reactions on messages
 reactions:write      - Add/remove reactions
-channels:manage      - Create, archive, rename channels
-groups:write         - Manage private channels
-im:write             - Send DMs
-mpim:write           - Send group DMs
 ```
 
-**Tip:** You can add all scopes to one token if you want simplicity. For better security, create two separate apps with different scopes.
+**Tip:** Add all scopes to ensure slka has full functionality.
 
-## Step 3: Install App to Workspace
+### Step 3: Install App to Workspace
 
 1. **Scroll to the top of "OAuth & Permissions" page**
 
@@ -86,22 +86,20 @@ mpim:write           - Send group DMs
    - You'll need it for slka configuration
    - Don't share it publicly (it's like a password)
 
-## Step 4: Configure slka
+### Step 4: Configure slka
 
-### Option 1: Interactive Setup (Recommended)
+#### Option 1: Interactive Setup (Recommended)
 
 ```bash
-cd ~/repos/slka
-./dist/slka-write config init
+slka config init
 ```
 
 This will prompt you for:
 - Read token (paste your `xoxb-...` token)
-- Write token (paste the same or different token)
-- User token (optional - press Enter to skip)
+- Write token (paste the same token)
 - Enable approval mode? (recommended: yes)
 
-### Option 2: Manual Configuration
+#### Option 2: Manual Configuration
 
 Create `~/.config/slka/config.json`:
 
@@ -124,7 +122,7 @@ Save and set permissions:
 chmod 600 ~/.config/slka/config.json
 ```
 
-### Option 3: Environment Variables
+#### Option 3: Environment Variables
 
 For quick testing:
 ```bash
@@ -132,12 +130,12 @@ export SLKA_READ_TOKEN="xoxb-your-token-here"
 export SLKA_WRITE_TOKEN="xoxb-your-token-here"
 ```
 
-## Step 5: Test Your Setup
+### Step 5: Test Your Setup
 
-### Test Read Token
+#### Test Token
 
 ```bash
-./dist/slka-read users list --limit 1
+slka users list --limit 1
 ```
 
 Expected output:
@@ -150,10 +148,10 @@ Expected output:
 }
 ```
 
-### Test Write Token (Dry Run)
+#### Test Write (Dry Run)
 
 ```bash
-./dist/slka-write message send general "Test" --dry-run
+slka message send general "Test" --dry-run
 ```
 
 Expected output:
@@ -167,7 +165,7 @@ Expected output:
 }
 ```
 
-## Step 6: Invite Bot to Channels
+### Step 6: Invite Bot to Channels
 
 Before the bot can read/write to a channel, it needs to be added:
 
@@ -250,55 +248,17 @@ Tokens can be revoked or expire. To get a new one:
 - ❌ Don't commit tokens to git
 - ❌ Don't share tokens in Slack or public places
 
-### 2. Use Separate Tokens (Optional)
-
-For better security, create two separate Slack apps:
-
-**App 1: slka-read**
-- Only read scopes
-- Use for queries
-
-**App 2: slka-write**
-- Only write scopes
-- Use for actions
-
-### 3. Enable Approval Mode
+### 2. Enable Approval Mode
 
 Set `"require_approval": true` in config to require human confirmation for write operations.
 
-### 4. Rotate Tokens Regularly
+### 3. Rotate Tokens Regularly
 
 Reinstall your app periodically to get fresh tokens.
 
-## Advanced: User Token (Optional)
+### 4. Limit Scope Access
 
-Some features (like managing channel sections/categories) require a **user token** instead of a bot token.
-
-To get a user token:
-
-1. **Go to "OAuth & Permissions"**
-
-2. **Scroll to "User Token Scopes"**
-
-3. **Add scopes:**
-   ```
-   users.profile:read
-   users.profile:write
-   ```
-
-4. **Reinstall the app**
-
-5. **Copy the "User OAuth Token"** (starts with `xoxp-`)
-
-6. **Add to config:**
-   ```json
-   {
-     "read_token": "xoxb-...",
-     "write_token": "xoxb-...",
-     "user_token": "xoxp-...",
-     "require_approval": true
-   }
-   ```
+Only add the scopes your bot actually needs. For read-only bots, omit write scopes.
 
 ## Quick Reference
 
@@ -306,22 +266,47 @@ To get a user token:
 |------|-------|-------------|
 | Create app | https://api.slack.com/apps | - |
 | Bot token | OAuth & Permissions → Bot User OAuth Token | `xoxb-` |
-| User token | OAuth & Permissions → User OAuth Token | `xoxp-` |
 | Add scopes | OAuth & Permissions → Scopes | - |
 | Reinstall app | OAuth & Permissions → Install to Workspace | - |
+
+## All Available Commands
+
+Once configured, slka can:
+
+**Channels:**
+- List, filter, get info, history, members
+- Create, archive, rename, set topic/description
+
+**Direct Messages:**
+- List DMs (1-on-1 and groups)
+- Send DMs, send group DMs
+- Get DM history
+
+**Messages:**
+- Send, reply, edit
+- Add/remove reactions
+- Check if acknowledged
+
+**Users:**
+- List users
+- Lookup by name, email, ID
+
+**Configuration:**
+- Show, set, init config
+
+See **[AI_QUICK_REFERENCE.md](AI_QUICK_REFERENCE.md)** for complete command reference.
 
 ## Next Steps
 
 Once you have your tokens configured:
 
 1. **Read the quickstart:** [QUICKSTART.md](QUICKSTART.md)
-2. **Try some commands:** [README.md](README.md#usage)
+2. **Try some commands:** [README.md](README.md#available-commands)
 3. **Build an AI agent:** [AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)
-4. **Run examples:** [examples/README.md](examples/README.md)
 
 ## Support
 
 If you get stuck:
 - Check the troubleshooting section above
 - Review Slack API docs: https://api.slack.com/docs
-- File an issue: https://github.com/ulf/slka/issues
+- File an issue: https://github.com/ulfschnabel/slka/issues
