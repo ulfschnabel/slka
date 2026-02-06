@@ -1,182 +1,201 @@
 # slka — Slack CLI for Agentic Workflows
 
-Two separate CLI tools for interacting with Slack, with a clear separation between read and write operations for security purposes.
-
-- **`slka-read`** — Read-only operations (low risk)
-- **`slka-write`** — Write operations (high risk, includes human approval mode)
+A unified CLI tool for interacting with Slack, designed for AI agents and automation workflows.
 
 ## Features
 
-- **Read/write separation** — Two distinct tools with separate Slack app tokens/scopes
+- **Unified binary** — Single `slka` command with both read and write operations
 - **JSON output** — All commands output JSON for easy parsing by LLMs and scripts
-- **Human approval mode** — `slka-write` can require explicit human confirmation before executing
-- **Test-driven development** — Built with comprehensive test coverage
-- **Link handling** — Properly handles Slack's `<url|text>` link format in both directions
+- **Human approval mode** — Write operations can require explicit human confirmation
+- **Token-efficient filtering** — Filter channels and DMs to reduce API calls and token usage
+- **Reaction tracking** — Check if messages have been acknowledged by others
+- **Direct messages** — Support for 1-on-1 and group DMs
+- **Link handling** — Properly handles Slack's `<url|text>` link format
 
-## Installation
+## Quick Start
 
-### Prerequisites
+### Installation
 
-- Go 1.21 or later
-- Slack workspace with appropriate bot tokens
-
-### Build from source
-
-```bash
-# Clone the repository
-git clone https://github.com/ulf/slka
-cd slka
-
-# Install dependencies
-make deps
-
-# Build for your platform
-make build-local
-
-# Install to GOPATH/bin
-make install
-```
-
-### Build for all platforms
+Download the latest release from [GitHub Releases](https://github.com/ulfschnabel/slka/releases):
 
 ```bash
-make build
+# Linux AMD64
+tar -xzf slka-v0.3.0-linux-amd64.tar.gz
+chmod +x slka
+sudo mv slka /usr/local/bin/
+
+# macOS ARM64 (Apple Silicon)
+tar -xzf slka-v0.3.0-darwin-arm64.tar.gz
+chmod +x slka
+sudo mv slka /usr/local/bin/
 ```
 
-Binaries will be in the `dist/` directory.
+### Setup
+
+1. **Get Slack token** — Use our manifest files for easy setup:
+   - **[MANIFEST_SETUP.md](MANIFEST_SETUP.md)** - 2-minute setup with pre-configured scopes ⭐ Recommended
+   - **[USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)** - Detailed guide for user tokens (personal automation)
+   - **[SLACK_SETUP.md](SLACK_SETUP.md)** - Bot token setup (team automation)
+
+2. **Configure slka**:
+   ```bash
+   slka config init
+   ```
+
+## Available Commands
+
+### Channels
+```bash
+# List channels (with optional filtering)
+slka channels list
+slka channels list --filter engineering
+slka channels list --type private
+
+# Get channel info and history
+slka channels info general
+slka channels history general --limit 50
+
+# Manage channels (requires approval)
+slka channels create new-project
+slka channels archive old-project
+```
+
+### Direct Messages
+```bash
+# List DM conversations (1-on-1 and group)
+slka dm list
+slka dm list --filter alice
+
+# Get DM history
+slka dm history alice
+slka dm history alice,bob,charlie  # Group DM
+
+# Send DMs (requires approval)
+slka dm send alice "Hello!"
+slka dm send alice,bob,charlie "Team meeting at 3pm"
+slka dm reply alice 1234567890.123456 "Got it!"
+```
+
+### Messages
+```bash
+# Send messages (requires approval)
+slka message send general "Hello team!"
+slka message reply general 1234567890.123456 "Reply text"
+slka message edit general 1234567890.123456 "Updated text"
+```
+
+### Reactions
+```bash
+# List reactions on a message
+slka reaction list general 1234567890.123456
+
+# Check if message was acknowledged
+slka reaction check-acknowledged general 1234567890.123456
+
+# Add/remove reactions (requires approval)
+slka reaction add general 1234567890.123456 thumbsup
+slka reaction remove general 1234567890.123456 eyes
+```
+
+### Users
+```bash
+# List all users
+slka users list
+
+# Look up a user
+slka users lookup alice@example.com
+slka users lookup alice
+```
 
 ## Configuration
 
-### Get Slack Tokens
-
-**Choose your setup:**
-
-- **[USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)** - Control **your own account** (messages appear as you) ⭐ Personal use
-- **[SLACK_SETUP.md](SLACK_SETUP.md)** - Set up a **bot account** (messages appear from bot) ⭐ Team automation
-
-Both token types work with slka. User tokens (`xoxp-`) are for personal automation, bot tokens (`xoxb-`) are for team bots.
-
-### Configure slka
-
-All configuration is stored in `~/.config/slka/config.json`:
+Config is stored in `~/.config/slka/config.json`:
 
 ```json
 {
-  "read_token": "xoxb-...",
-  "write_token": "xoxb-...",
-  "user_token": "xoxp-...",
+  "read_token": "xoxp-...",
+  "write_token": "xoxp-...",
   "require_approval": true
 }
 ```
 
-**Initialize configuration interactively:**
+**Token types:**
+- **User tokens** (`xoxp-`) - Messages appear as you (personal automation)
+- **Bot tokens** (`xoxb-`) - Messages appear from bot (team automation)
 
-```bash
-slka-write config init
-```
-
-This will walk you through setting up your tokens and preferences.
-
-### Environment variables
-
-You can override config file values with environment variables:
-
-- `SLKA_READ_TOKEN` — Override read token
-- `SLKA_WRITE_TOKEN` — Override write token
-- `SLKA_USER_TOKEN` — Override user token
-
-Note: `require_approval` can only be set in the config file.
-
-## Documentation
-
-- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
-- **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** - Complete guide for AI agents and LLMs
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide for contributing
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - Architecture and implementation details
-
-## Usage
-
-### Read operations
-
-```bash
-# List channels
-slka-read channels list
-
-# Get channel history
-slka-read channels history general --since 2024-01-01
-
-# List users
-slka-read users list
-
-# Look up a user
-slka-read users lookup john@example.com
-```
-
-### Write operations
-
-```bash
-# Send a message (with approval if configured)
-slka-write message send general "Hello world"
-
-# Create a channel
-slka-write channels create newchannel --description "New channel for project"
-
-# Archive a channel
-slka-write channels archive old-project
-```
+Use the same token for both read and write, or separate them for added security.
 
 ## For AI Agents
 
-This tool is designed specifically for AI agents and LLMs. All commands output JSON for easy parsing:
+All commands output JSON for easy parsing:
 
 ```python
 import json
 import subprocess
 
+# List channels matching "eng"
 result = subprocess.run(
-    ["slka-read", "channels", "history", "general", "--limit", "50"],
+    ["slka", "channels", "list", "--filter", "eng"],
     capture_output=True,
     text=True
 )
 
 data = json.loads(result.stdout)
 if data["ok"]:
-    messages = data["data"]["messages"]
-    # Process messages...
+    channels = data["data"]["channels"]
+    # Process channels...
 ```
 
-See **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** for complete integration examples, workflows, and best practices.
+**Token-efficient filtering:**
+```bash
+# Bad: Returns all 100+ channels (~10k tokens)
+slka channels list
+
+# Good: Returns 2-3 channels (~300 tokens)
+slka channels list --filter backend
+
+# Find all DMs with a specific user
+slka dm list --filter alice
+```
+
+See **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** for complete integration guide.
 
 ## Human Approval Mode
 
-When `require_approval` is set to `true` in the config file, `slka-write` will:
+When `require_approval: true` in config, write operations require confirmation:
 
-1. Print a description of the action to be taken
-2. Print the full JSON payload that would be sent to Slack
-3. Prompt for confirmation: `Execute this action? [y/N]`
-4. Only proceed if the user explicitly types `y` or `yes`
+1. Shows action description and payload
+2. Prompts: `Execute this action? [y/N]`
+3. Only proceeds if user types `y` or `yes`
 
-This is a safety measure to prevent accidental or malicious actions.
+Test safely with `--dry-run`:
+```bash
+slka message send general "test" --dry-run
+slka dm send alice "hello" --dry-run
+```
+
+## Documentation
+
+- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
+- **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** - Complete guide for AI agents
+- **[AI_QUICK_REFERENCE.md](AI_QUICK_REFERENCE.md)** - Quick command reference
+- **[MANIFEST_SETUP.md](MANIFEST_SETUP.md)** - Easy token setup with manifests
+- **[RELEASING.md](RELEASING.md)** - How to create releases
 
 ## Development
 
-### Run tests
-
 ```bash
-make test
+# Build
+go build ./cmd/slka
+
+# Run tests
+go test ./...
+
+# Test with goreleaser
+goreleaser build --snapshot --clean
 ```
 
-### Generate coverage report
-
-```bash
-make test-coverage
-```
-
-### Run linter
-
-```bash
-make lint
-```
+See **[DEVELOPMENT.md](DEVELOPMENT.md)** for detailed development guide.
 
 ## License
 

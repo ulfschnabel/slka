@@ -1,206 +1,241 @@
-# slka Quickstart Guide
+# Quick Start Guide
 
 Get up and running with slka in 5 minutes.
 
-## Step 1: Install Go
+## 1. Installation
+
+Download from [GitHub Releases](https://github.com/ulfschnabel/slka/releases):
 
 ```bash
-sudo ./install-go.sh
+# Linux (AMD64)
+wget https://github.com/ulfschnabel/slka/releases/latest/download/slka-linux-amd64.tar.gz
+tar -xzf slka-linux-amd64.tar.gz
+chmod +x slka
+sudo mv slka /usr/local/bin/
+
+# macOS (Apple Silicon)
+wget https://github.com/ulfschnabel/slka/releases/latest/download/slka-darwin-arm64.tar.gz
+tar -xzf slka-darwin-arm64.tar.gz
+chmod +x slka
+sudo mv slka /usr/local/bin/
 ```
 
-## Step 2: Build slka
+## 2. Get Slack Token
+
+**Fastest method** - Use our manifest files (2 minutes):
+
+1. Go to https://api.slack.com/apps
+2. Click "Create New App" → "From an app manifest"
+3. Select your workspace
+4. Copy content from `slack-manifest-user-token.yaml` (included in release)
+5. Click "Create" → "Install to Workspace"
+6. Copy the **User OAuth Token** (starts with `xoxp-`)
+
+See [MANIFEST_SETUP.md](MANIFEST_SETUP.md) for detailed instructions.
+
+## 3. Configure
 
 ```bash
-./setup.sh
+slka config init
 ```
 
-This will:
-- Download dependencies
-- Run tests
-- Build both `slka-read` and `slka-write` binaries
+When prompted, paste your token for both read and write (same token).
 
-## Step 3: Get Slack Tokens
-
-**Choose your setup:**
-
-### Option A: User Token (Personal - Recommended for Individual Use)
-Messages appear as **you**. Perfect for personal automation.
-
-**📖 Follow: [USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)**
-
-Quick summary:
-1. Create Slack app
-2. Add **User Token Scopes** (NOT Bot Token Scopes)
-3. Install and authorize
-4. Copy "User OAuth Token" (`xoxp-...`)
-
-### Option B: Bot Token (Team Automation)
-Messages appear from a **bot**. Perfect for team tools.
-
-**📖 Follow: [SLACK_SETUP.md](SLACK_SETUP.md)**
-
-Quick summary:
-1. Create Slack app
-2. Add **Bot Token Scopes**
-3. Install to workspace
-4. Copy "Bot User OAuth Token" (`xoxb-...`)
-
----
-
-**Both work with slka!** User tokens are simpler for personal use.
-
-## Step 4: Configure slka
-
-```bash
-./dist/slka-write config init
-```
-
-Follow the prompts to enter your tokens.
-
-Or manually create `~/.config/slka/config.json`:
-
-```json
-{
-  "read_token": "xoxb-your-read-token",
-  "write_token": "xoxb-your-write-token",
-  "require_approval": true
-}
-```
-
-## Step 5: Try It Out
-
-### Read Operations
+## 4. Test It!
 
 ```bash
 # List channels
-./dist/slka-read channels list
+slka channels list
+
+# List with filter (token efficient!)
+slka channels list --filter general
 
 # Get channel history
-./dist/slka-read channels history general --limit 10
+slka channels history general --limit 10
 
-# List users
-./dist/slka-read users list
+# List your DMs
+slka dm list
 
-# Look up a user
-./dist/slka-read users lookup john@example.com
+# Test sending (dry-run, no approval needed)
+slka message send general "Hello from slka!" --dry-run
 ```
 
-### Write Operations (with Approval)
+## Common Commands
+
+### Channels
 
 ```bash
-# Send a message (will prompt for approval)
-./dist/slka-write message send general "Hello from slka!"
+# Find specific channels
+slka channels list --filter engineering
+slka channels list --type private
 
-# Create a channel
-./dist/slka-write channels create test-channel --description "Test"
+# Get info and history
+slka channels info general
+slka channels history general --limit 50 --since 2024-01-01
 
-# Dry run (see what would happen without executing)
-./dist/slka-write message send general "Test" --dry-run
+# Manage (requires approval)
+slka channels create new-project
+slka channels archive old-project
+slka channels invite new-project alice,bob
 ```
 
-## Common Tasks
-
-### Morning Brief
+### Direct Messages
 
 ```bash
-# Get updates from yesterday
-YESTERDAY=$(date -d 'yesterday 9am' +%s)
-./dist/slka-read channels history general --since $YESTERDAY
+# List DMs (1-on-1 and groups)
+slka dm list
+slka dm list --filter alice  # Find all DMs with alice
+
+# View history
+slka dm history alice
+slka dm history alice,bob,charlie  # Group DM
+
+# Send (requires approval)
+slka dm send alice "Hey!"
+slka dm send alice,bob "Team sync at 3"
 ```
 
-### Send Notification
+### Messages
 
 ```bash
-# With approval
-./dist/slka-write message send announcements "Deploy complete ✓"
+# Send (requires approval)
+slka message send general "Hello team!"
+slka message reply general 1234567890.123456 "Reply"
+slka message edit general 1234567890.123456 "Updated"
 ```
 
-### Find All Channels
+### Reactions
 
 ```bash
-# Including archived
-./dist/slka-read channels list --include-archived --output-pretty
+# Check if acknowledged
+slka reaction check-acknowledged general 1234567890.123456
+
+# List reactions
+slka reaction list general 1234567890.123456
+
+# Add/remove (requires approval)
+slka reaction add general 1234567890.123456 thumbsup
+slka reaction remove general 1234567890.123456 eyes
 ```
 
-### Channel Management
+### Users
 
 ```bash
-# Archive old channel
-./dist/slka-write channels archive old-project
+# List all users
+slka users list
 
-# Set channel topic
-./dist/slka-write channels set-topic general "Welcome to our workspace"
+# Lookup
+slka users lookup alice@example.com
+slka users lookup alice
 ```
 
-## Tips
-
-### Disable Approval (for Automation)
+## Configuration Options
 
 Edit `~/.config/slka/config.json`:
 
 ```json
 {
-  "read_token": "...",
-  "write_token": "...",
-  "require_approval": false
+  "read_token": "xoxp-...",
+  "write_token": "xoxp-...",
+  "require_approval": true
 }
 ```
 
-⚠️ **Warning**: Only disable approval in trusted automation contexts!
+**Options:**
+- `read_token` - Token for read operations
+- `write_token` - Token for write operations (can be same as read_token)
+- `require_approval` - Require confirmation before write operations (default: true)
 
-### Environment Variables
+**Use separate tokens?**
+- Same token: Simpler, one app to manage
+- Separate tokens: More security (read-only app can't write)
 
-Override tokens without changing config:
+## Approval Mode
 
-```bash
-export SLKA_WRITE_TOKEN="xoxb-automation-token"
-./dist/slka-write message send general "Automated message"
-```
-
-### Pretty Print JSON
-
-Add `--output-pretty` to any command:
+When `require_approval: true`:
 
 ```bash
-./dist/slka-read channels list --output-pretty
+$ slka message send general "test"
+
+Send message to general
+Payload:
+{
+  "channel": "C123456",
+  "text": "test"
+}
+Execute this action? [y/N]:
 ```
 
-### Install System-Wide
+Type `y` or `yes` to proceed.
+
+## Dry Run Mode
+
+Test commands without executing:
 
 ```bash
-make install
-# Now you can use 'slka-read' and 'slka-write' from anywhere
+slka message send general "test" --dry-run
+slka dm send alice "hi" --dry-run
+slka channels create test-channel --dry-run
 ```
 
-## Troubleshooting
+Shows exactly what would happen, no approval needed.
 
-### "No read/write token configured"
+## For AI Agents
 
-Run `./dist/slka-write config init` or set environment variables.
+All commands output JSON:
 
-### "Channel not found"
-
-Make sure the bot is invited to the channel:
+```bash
+$ slka channels list --filter eng --output-pretty
+{
+  "ok": true,
+  "data": {
+    "channels": [
+      {
+        "id": "C123",
+        "name": "engineering",
+        "is_private": false,
+        "num_members": 15
+      }
+    ]
+  }
+}
 ```
-/invite @slka
+
+**Token efficiency tips:**
+```bash
+# ❌ Bad: Returns all 100 channels
+slka channels list
+
+# ✅ Good: Returns 2-3 matching channels
+slka channels list --filter backend
+
+# ✅ Good: Find specific user's DMs
+slka dm list --filter alice
 ```
 
-### "Missing scope" Error
-
-Add the required scope in your Slack app settings, then reinstall the app.
-
-### Tests Failing
-
-Tests may fail if Slack tokens aren't configured. This is expected for a fresh install.
+See [AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md) for integration examples.
 
 ## Next Steps
 
-- Read the full [README.md](README.md) for all commands
-- Check [DEVELOPMENT.md](DEVELOPMENT.md) for contributing
-- Review the [plan specification](text.txt) for architecture details
+- **[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md)** - Build AI automations
+- **[AI_QUICK_REFERENCE.md](AI_QUICK_REFERENCE.md)** - Quick command reference
+- **[USER_TOKEN_SETUP.md](USER_TOKEN_SETUP.md)** - Detailed token setup
 
-## Getting Help
+## Troubleshooting
 
-- Check command help: `./dist/slka-read --help`
-- View subcommand help: `./dist/slka-read channels --help`
-- Read Slack API docs: https://api.slack.com/
+**"Missing scope" error?**
+- Your token needs additional scopes
+- Recreate app using manifest files (easiest)
+- Or manually add scopes in app settings
+
+**Commands hanging?**
+- Check token is valid: `slka users list`
+- Verify network access to Slack API
+
+**"Channel not found"?**
+- Use channel name without `#`: `slka channels info general`
+- Or use channel ID: `slka channels info C123456`
+
+**Approval not working?**
+- Set `require_approval: true` in config
+- Check you're using write operations (not read)
