@@ -101,6 +101,49 @@ else:
 
 ## Command Reference
 
+### Unread Tracking
+
+#### List Unread Conversations
+```bash
+slka unread list
+slka unread list --channels-only
+slka unread list --dms-only
+slka unread list --min-unread 5
+slka unread list --order-by oldest
+```
+
+Returns:
+```json
+{
+  "ok": true,
+  "data": {
+    "unread_conversations": [
+      {
+        "id": "C123",
+        "name": "engineering",
+        "type": "channel",
+        "is_channel": true,
+        "unread_count": 15,
+        "last_read": "1706123450.000000"
+      },
+      {
+        "id": "D456",
+        "type": "im",
+        "is_im": true,
+        "unread_count": 3,
+        "user_id": "U789",
+        "user_name": "alice"
+      }
+    ],
+    "total_count": 2
+  }
+}
+```
+
+**Ordering Options:**
+- `--order-by count` (default): Most unread first, for urgent items
+- `--order-by oldest`: Oldest unread first, for FIFO processing
+
 ### Channels
 
 #### List Channels (Filtered - Recommended)
@@ -248,6 +291,29 @@ slka users list --limit 100
 ```
 
 ## AI Agent Workflows
+
+### Workflow 0: Check What Needs Attention
+
+```python
+def check_unread_and_prioritize():
+    # Get all unread conversations
+    result = slka("unread list")
+    if not result["ok"]:
+        return
+
+    unreads = result["data"]["unread_conversations"]
+
+    # Prioritize by type and count
+    urgent_channels = [c for c in unreads if c["is_channel"] and c["unread_count"] >= 10]
+    urgent_dms = [c for c in unreads if c["is_im"] and c["unread_count"] >= 3]
+
+    # Handle urgent items first
+    for channel in urgent_channels:
+        handle_channel(channel["id"], channel["name"])
+
+    for dm in urgent_dms:
+        handle_dm(dm["id"], dm["user_name"])
+```
 
 ### Workflow 1: Monitor Channel and Respond
 

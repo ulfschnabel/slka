@@ -62,6 +62,15 @@ slka message send general "Hello from slka!" --dry-run
 
 ## Common Commands
 
+### Unread Tracking
+
+```bash
+# Find what needs attention
+slka unread list
+slka unread list --channels-only
+slka unread list --order-by oldest
+```
+
 ### Channels
 
 ```bash

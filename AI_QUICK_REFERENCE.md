@@ -8,6 +8,27 @@ All commands return JSON. Parse it. Check `"ok": true/false`.
 
 ## Read Commands (Safe, No Approval)
 
+### Unread Tracking - **Find what needs attention!**
+```bash
+# List all unread conversations
+slka unread list
+
+# Only unread channels
+slka unread list --channels-only
+
+# Only unread DMs
+slka unread list --dms-only
+
+# Minimum threshold
+slka unread list --min-unread 5
+
+# Order by oldest first (process FIFO)
+slka unread list --order-by oldest
+
+# Order by most unread first (default, most urgent)
+slka unread list --order-by count
+```
+
 ### Channels - **Use --filter for token efficiency!**
 ```bash
 # List channels (filtered - RECOMMENDED)
@@ -186,6 +207,25 @@ data = slka("dm list --filter alice")  # ~200 tokens
 **Always use --filter when you know what you're looking for!**
 
 ## Common Patterns
+
+### Check What Needs Attention
+```python
+# Get all unread conversations
+unreads = slka("unread list")
+if unreads["ok"]:
+    for conv in unreads["data"]["unread_conversations"]:
+        print(f"{conv['type']} {conv.get('name', conv.get('user_name'))}: {conv['unread_count']} unread")
+```
+
+### Process Oldest Unreads First
+```python
+# Get unreads ordered by oldest first
+unreads = slka("unread list --order-by oldest --min-unread 3")
+if unreads["ok"]:
+    for conv in unreads["data"]["unread_conversations"]:
+        # Process oldest conversations with 3+ unread
+        handle_conversation(conv["id"], conv["unread_count"])
+```
 
 ### Find Channel and Send Message
 ```python

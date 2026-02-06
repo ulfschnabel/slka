@@ -8,6 +8,7 @@ A unified CLI tool for interacting with Slack, designed for AI agents and automa
 - **JSON output** — All commands output JSON for easy parsing by LLMs and scripts
 - **Human approval mode** — Write operations can require explicit human confirmation
 - **Token-efficient filtering** — Filter channels and DMs to reduce API calls and token usage
+- **Unread tracking** — Find channels/DMs needing attention with flexible ordering
 - **Reaction tracking** — Check if messages have been acknowledged by others
 - **Direct messages** — Support for 1-on-1 and group DMs
 - **Link handling** — Properly handles Slack's `<url|text>` link format
@@ -43,6 +44,16 @@ sudo mv slka /usr/local/bin/
    ```
 
 ## Available Commands
+
+### Unread Tracking
+```bash
+# Find what needs attention (NEW!)
+slka unread list
+slka unread list --channels-only
+slka unread list --dms-only
+slka unread list --min-unread 5
+slka unread list --order-by oldest  # Process oldest first
+```
 
 ### Channels
 ```bash
