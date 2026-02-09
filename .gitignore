@@ -35,3 +35,8 @@ config.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal dev environment setup
+setup-samba.sh
+fix-samba-permissions.sh
+fix-ios-samba.sh
