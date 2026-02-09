@@ -3,6 +3,8 @@ package mockserver
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -10,9 +12,12 @@ func TestMockServerAuth(t *testing.T) {
 	server := New()
 	defer server.Close()
 
-	// Test with correct token
-	req, _ := http.NewRequest("GET", server.URL()+"/api/auth.test", nil)
-	req.Header.Set("Authorization", "Bearer "+server.Token)
+	// Test with correct token (in form data, like slack-go does)
+	form := url.Values{}
+	form.Add("token", server.Token)
+
+	req, _ := http.NewRequest("POST", server.URL()+"/api/auth.test", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -32,9 +37,12 @@ func TestMockServerAuthInvalid(t *testing.T) {
 	server := New()
 	defer server.Close()
 
-	// Test with wrong token
-	req, _ := http.NewRequest("GET", server.URL()+"/api/auth.test", nil)
-	req.Header.Set("Authorization", "Bearer wrong-token")
+	// Test with wrong token (in form data)
+	form := url.Values{}
+	form.Add("token", "wrong-token")
+
+	req, _ := http.NewRequest("POST", server.URL()+"/api/auth.test", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -57,8 +65,13 @@ func TestMockServerConversationsList(t *testing.T) {
 	server := New()
 	defer server.Close()
 
-	req, _ := http.NewRequest("GET", server.URL()+"/api/conversations.list?types=public_channel", nil)
-	req.Header.Set("Authorization", "Bearer "+server.Token)
+	// Send token and types in form data
+	form := url.Values{}
+	form.Add("token", server.Token)
+	form.Add("types", "public_channel")
+
+	req, _ := http.NewRequest("POST", server.URL()+"/api/conversations.list", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
