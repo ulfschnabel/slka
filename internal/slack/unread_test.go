@@ -47,6 +47,24 @@ func TestListUnread(t *testing.T) {
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
 
+	// Mock GetConversationInfo calls for each conversation
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C2",
+		IncludeNumMembers: false,
+	}).Return(&channel2, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "D1",
+		IncludeNumMembers: false,
+	}).Return(&dm1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "G1",
+		IncludeNumMembers: false,
+	}).Return(&groupDM, nil)
+
 	// Mock user lookup for DM
 	mockClient.On("GetUserInfo", "U123").Return(&slack.User{
 		ID:   "U123",
@@ -87,6 +105,14 @@ func TestListUnreadChannelsOnly(t *testing.T) {
 	channels := []slack.Channel{channel1, dm1}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "D1",
+		IncludeNumMembers: false,
+	}).Return(&dm1, nil)
 
 	svc := NewUnreadService(mockClient)
 	results, err := svc.ListUnread(UnreadOptions{ChannelsOnly: true})
@@ -126,6 +152,18 @@ func TestListUnreadDMsOnly(t *testing.T) {
 	channels := []slack.Channel{channel1, dm1, groupDM}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "D1",
+		IncludeNumMembers: false,
+	}).Return(&dm1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "G1",
+		IncludeNumMembers: false,
+	}).Return(&groupDM, nil)
 	mockClient.On("GetUserInfo", "U123").Return(&slack.User{
 		ID:   "U123",
 		Name: "alice",
@@ -162,6 +200,14 @@ func TestListUnreadWithMinCount(t *testing.T) {
 	channels := []slack.Channel{channel1, channel2}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C2",
+		IncludeNumMembers: false,
+	}).Return(&channel2, nil)
 
 	svc := NewUnreadService(mockClient)
 	results, err := svc.ListUnread(UnreadOptions{MinUnreadCount: 5})
@@ -187,6 +233,10 @@ func TestListUnreadEmpty(t *testing.T) {
 	channels := []slack.Channel{channel1}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
 
 	svc := NewUnreadService(mockClient)
 	results, err := svc.ListUnread(UnreadOptions{})
@@ -228,6 +278,18 @@ func TestListUnreadOrderByOldest(t *testing.T) {
 	channels := []slack.Channel{channel1, channel2, channel3}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C2",
+		IncludeNumMembers: false,
+	}).Return(&channel2, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C3",
+		IncludeNumMembers: false,
+	}).Return(&channel3, nil)
 
 	svc := NewUnreadService(mockClient)
 	results, err := svc.ListUnread(UnreadOptions{OrderBy: "oldest"})
@@ -275,6 +337,18 @@ func TestListUnreadOrderByCount(t *testing.T) {
 	channels := []slack.Channel{channel1, channel2, channel3}
 
 	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C2",
+		IncludeNumMembers: false,
+	}).Return(&channel2, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C3",
+		IncludeNumMembers: false,
+	}).Return(&channel3, nil)
 
 	svc := NewUnreadService(mockClient)
 	// Default ordering should be by count

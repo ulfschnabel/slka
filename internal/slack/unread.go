@@ -45,8 +45,9 @@ func NewUnreadService(client Client) *UnreadService {
 func (s *UnreadService) ListUnread(opts UnreadOptions) ([]UnreadInfo, error) {
 	// Get all conversations
 	params := &slack.GetConversationsParameters{
-		Types: []string{"public_channel", "private_channel", "im", "mpim"},
-		Limit: 1000,
+		Types:           []string{"public_channel", "private_channel", "im", "mpim"},
+		Limit:           1000,
+		ExcludeArchived: true,
 	}
 
 	conversations, _, err := s.client.GetConversations(params)
@@ -57,19 +58,34 @@ func (s *UnreadService) ListUnread(opts UnreadOptions) ([]UnreadInfo, error) {
 	var results []UnreadInfo
 
 	for _, conv := range conversations {
+		// GetConversations doesn't always return unread counts, so we need to fetch
+		// detailed info for each conversation to get accurate unread counts
+		convInfo, err := s.client.GetConversationInfo(&slack.GetConversationInfoInput{
+			ChannelID:         conv.ID,
+			IncludeNumMembers: false,
+		})
+		if err != nil {
+			// If we can't get info for this conversation, skip it
+			continue
+		}
+
 		// Skip if no unread messages
-		if conv.UnreadCount == 0 {
+		if convInfo.UnreadCount == 0 && convInfo.UnreadCountDisplay == 0 {
 			continue
 		}
 
 		// Skip if below minimum threshold
-		if opts.MinUnreadCount > 0 && conv.UnreadCount < opts.MinUnreadCount {
+		unreadCount := convInfo.UnreadCount
+		if unreadCount == 0 {
+			unreadCount = convInfo.UnreadCountDisplay
+		}
+		if opts.MinUnreadCount > 0 && unreadCount < opts.MinUnreadCount {
 			continue
 		}
 
 		// Apply type filters
-		isChannel := conv.IsChannel
-		isDM := conv.IsIM || conv.IsMpIM
+		isChannel := convInfo.IsChannel
+		isDM := convInfo.IsIM || convInfo.IsMpIM
 
 		if opts.ChannelsOnly && !isChannel {
 			continue
@@ -80,28 +96,28 @@ func (s *UnreadService) ListUnread(opts UnreadOptions) ([]UnreadInfo, error) {
 
 		// Determine type string
 		convType := "channel"
-		if conv.IsIM {
+		if convInfo.IsIM {
 			convType = "im"
-		} else if conv.IsMpIM {
+		} else if convInfo.IsMpIM {
 			convType = "mpim"
 		}
 
 		info := UnreadInfo{
-			ID:                 conv.ID,
-			Name:               conv.Name,
+			ID:                 convInfo.ID,
+			Name:               convInfo.Name,
 			Type:               convType,
-			IsChannel:          conv.IsChannel,
-			IsPrivate:          conv.IsPrivate,
-			IsIM:               conv.IsIM,
-			IsMpIM:             conv.IsMpIM,
-			UnreadCount:        conv.UnreadCount,
-			UnreadCountDisplay: conv.UnreadCountDisplay,
-			LastRead:           conv.LastRead,
+			IsChannel:          convInfo.IsChannel,
+			IsPrivate:          convInfo.IsPrivate,
+			IsIM:               convInfo.IsIM,
+			IsMpIM:             convInfo.IsMpIM,
+			UnreadCount:        convInfo.UnreadCount,
+			UnreadCountDisplay: convInfo.UnreadCountDisplay,
+			LastRead:           convInfo.LastRead,
 		}
 
 		// For 1-on-1 DMs, get user information
-		if conv.IsIM && conv.User != "" {
-			user, err := s.client.GetUserInfo(conv.User)
+		if convInfo.IsIM && convInfo.User != "" {
+			user, err := s.client.GetUserInfo(convInfo.User)
 			if err == nil {
 				info.UserID = user.ID
 				info.UserName = user.Name
