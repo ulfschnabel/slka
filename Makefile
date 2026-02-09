@@ -3,7 +3,7 @@ BINARY_WRITE = slka-write
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
 
-.PHONY: all build test clean install lint skill
+.PHONY: all build test test-unit test-integration test-all clean install lint skill
 
 all: build
 
@@ -34,8 +34,18 @@ build-local:
 	go build $(LDFLAGS) -o dist/$(BINARY_READ) ./cmd/slka-read
 	go build $(LDFLAGS) -o dist/$(BINARY_WRITE) ./cmd/slka-write
 
-test:
-	go test -v -race -cover ./...
+test: test-unit
+
+test-unit:
+	@echo "Running unit tests..."
+	go test -v -race -cover ./internal/... ./pkg/...
+
+test-integration:
+	@echo "Running integration tests..."
+	go test -v ./test/integration/...
+
+test-all: test-unit test-integration
+	@echo "All tests passed!"
 
 test-coverage:
 	go test -coverprofile=coverage.out ./...
@@ -64,12 +74,15 @@ skill:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  make build         - Build for all platforms"
-	@echo "  make build-local   - Build for current platform"
-	@echo "  make test          - Run tests"
-	@echo "  make test-coverage - Run tests with coverage report"
-	@echo "  make lint          - Run linter"
-	@echo "  make clean         - Remove build artifacts"
-	@echo "  make install       - Install to GOPATH/bin"
-	@echo "  make deps          - Download dependencies"
-	@echo "  make skill         - Package the agent skill"
+	@echo "  make build             - Build for all platforms"
+	@echo "  make build-local       - Build for current platform"
+	@echo "  make test              - Run unit tests (alias for test-unit)"
+	@echo "  make test-unit         - Run unit tests only"
+	@echo "  make test-integration  - Run integration tests with mock Slack server"
+	@echo "  make test-all          - Run all tests (unit + integration)"
+	@echo "  make test-coverage     - Run tests with coverage report"
+	@echo "  make lint              - Run linter"
+	@echo "  make clean             - Remove build artifacts"
+	@echo "  make install           - Install to GOPATH/bin"
+	@echo "  make deps              - Download dependencies"
+	@echo "  make skill             - Package the agent skill"

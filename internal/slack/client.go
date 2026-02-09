@@ -1,6 +1,8 @@
 package slack
 
 import (
+	"os"
+
 	"github.com/slack-go/slack"
 )
 
@@ -50,8 +52,18 @@ type RealClient struct {
 
 // NewClient creates a new Slack client
 func NewClient(token string) Client {
+	// Check if custom API URL is set (for testing)
+	options := []slack.Option{}
+	if apiURL := os.Getenv("SLACK_API_URL"); apiURL != "" {
+		options = append(options, slack.OptionAPIURL(apiURL))
+		// Debug log for testing
+		if os.Getenv("SLKA_DEBUG") == "1" {
+			println("Using custom Slack API URL:", apiURL)
+		}
+	}
+
 	return &RealClient{
-		Client: slack.New(token),
+		Client: slack.New(token, options...),
 	}
 }
 
