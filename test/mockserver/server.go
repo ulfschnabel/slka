@@ -31,7 +31,9 @@ func New() *MockSlackServer {
 	mux.HandleFunc("/api/conversations.history", m.handleConversationsHistory)
 	mux.HandleFunc("/api/users.list", m.handleUsersList)
 	mux.HandleFunc("/api/users.info", m.handleUsersInfo)
+	mux.HandleFunc("/api/users.lookupByEmail", m.handleUsersLookupByEmail)
 	mux.HandleFunc("/api/chat.postMessage", m.handleChatPostMessage)
+	mux.HandleFunc("/api/chat.update", m.handleChatUpdate)
 	mux.HandleFunc("/api/auth.test", m.handleAuthTest)
 
 	m.Server = httptest.NewServer(mux)
@@ -228,6 +230,33 @@ func (m *MockSlackServer) handleUsersInfo(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// handleUsersLookupByEmail handles users.lookupByEmail API calls
+func (m *MockSlackServer) handleUsersLookupByEmail(w http.ResponseWriter, r *http.Request) {
+	if !m.checkAuth(r) {
+		m.writeError(w, "invalid_auth")
+		return
+	}
+
+	// Parse form data to get email
+	r.ParseForm()
+	email := r.FormValue("email")
+	// Also check query parameter as fallback
+	if email == "" {
+		email = r.URL.Query().Get("email")
+	}
+	user := fixtures.GetUserByEmail(email)
+	if user == nil {
+		m.writeError(w, "users_not_found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":   true,
+		"user": m.userToAPI(*user),
+	})
+}
+
 // handleChatPostMessage handles chat.postMessage API calls
 func (m *MockSlackServer) handleChatPostMessage(w http.ResponseWriter, r *http.Request) {
 	if !m.checkAuth(r) {
@@ -235,12 +264,43 @@ func (m *MockSlackServer) handleChatPostMessage(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Just return success for now
+	// Parse form data
+	r.ParseForm()
+	channel := r.FormValue("channel")
+	threadTS := r.FormValue("thread_ts")
+
+	response := map[string]interface{}{
+		"ok":      true,
+		"channel": channel,
+		"ts":      "1234567890.000000",
+	}
+
+	// If it's a thread reply, include thread_ts
+	if threadTS != "" {
+		response["thread_ts"] = threadTS
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleChatUpdate handles chat.update API calls
+func (m *MockSlackServer) handleChatUpdate(w http.ResponseWriter, r *http.Request) {
+	if !m.checkAuth(r) {
+		m.writeError(w, "invalid_auth")
+		return
+	}
+
+	// Parse form data
+	r.ParseForm()
+	channel := r.FormValue("channel")
+	ts := r.FormValue("ts")
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
-		"channel": "C001",
-		"ts":      "1234567890.000000",
+		"channel": channel,
+		"ts":      ts,
 	})
 }
 

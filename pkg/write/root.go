@@ -80,3 +80,31 @@ func Execute() {
 		os.Exit(output.ExitGeneralError)
 	}
 }
+
+// Initialize sets up the write package with the given config file path
+// This is used by the unified slka binary to initialize write commands
+func Initialize(configFile string) error {
+	cfgFile = configFile
+
+	var err error
+	cfg, err = config.Load(cfgFile)
+	if err != nil {
+		// Config file not found is ok
+		cfg = &config.Config{}
+	}
+
+	// Validate we have a write token
+	if cfg.WriteToken == "" {
+		return fmt.Errorf("no write token configured")
+	}
+
+	// Create Slack client
+	slackClient = slack.NewClient(cfg.WriteToken)
+
+	// Create approver
+	isatty := term.IsTerminal(int(os.Stdin.Fd()))
+	approver = approval.NewApprover(isatty, nil)
+	approver.SetRequired(cfg.RequireApproval)
+
+	return nil
+}

@@ -64,3 +64,14 @@ func GetUserByName(name string) *User {
 	}
 	return nil
 }
+
+// GetUserByEmail returns a test user by email
+func GetUserByEmail(email string) *User {
+	users := GetTestUsers()
+	for _, u := range users {
+		if u.Email == email {
+			return &u
+		}
+	}
+	return nil
+}

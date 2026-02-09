@@ -56,6 +56,7 @@ type UserInfo struct {
 	Name     string `json:"name"`
 	RealName string `json:"real_name"`
 	Email    string `json:"email,omitempty"`
+	IsBot    bool   `json:"is_bot"`
 }
 
 // ListChannelsOptions contains options for listing channels
@@ -251,5 +252,6 @@ func convertUser(user slack.User) UserInfo {
 		Name:     user.Name,
 		RealName: user.RealName,
 		Email:    user.Profile.Email,
+		IsBot:    user.IsBot,
 	}
 }

@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -92,12 +93,20 @@ func (e *TestEnv) RunCommand(args ...string) *CommandResult {
 	e.T.Logf("Using token: %s", e.MockServer.Token)
 
 	// Capture stdout and stderr separately
-	// JSON output goes to stdout, debug output goes to stderr
-	output, err := cmd.Output() // Only capture stdout
+	// JSON output goes to stdout, error messages go to stderr
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+
+	// For debugging, log stderr if there was an error
+	if err != nil {
+		e.T.Logf("Command stderr: %s", stderr.String())
+	}
 
 	return &CommandResult{
 		T:        e.T,
-		Output:   string(output),
+		Output:   stdout.String(),
 		ExitCode: cmd.ProcessState.ExitCode(),
 		Err:      err,
 	}
