@@ -3,7 +3,7 @@ BINARY_WRITE = slka-write
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
 
-.PHONY: all build test clean install lint
+.PHONY: all build test clean install lint skill
 
 all: build
 
@@ -58,6 +58,9 @@ deps:
 	go mod download
 	go mod tidy
 
+skill:
+	cd skill && ./package.sh
+
 .PHONY: help
 help:
 	@echo "Available targets:"
@@ -69,3 +72,4 @@ help:
 	@echo "  make clean         - Remove build artifacts"
 	@echo "  make install       - Install to GOPATH/bin"
 	@echo "  make deps          - Download dependencies"
+	@echo "  make skill         - Package the agent skill"

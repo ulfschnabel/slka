@@ -185,6 +185,23 @@ slka message send general "test" --dry-run
 slka dm send alice "hello" --dry-run
 ```
 
+## Agent Skill
+
+An agent skill is available for AI assistants like Claude to use slka safely and effectively. The skill includes:
+
+- Safety guardrails (no keychain access, no unofficial Slack tools)
+- Workflow patterns for common tasks
+- Token efficiency guidance
+- User approval workflows
+
+**Install the skill:**
+```bash
+# Install the packaged skill
+claude code skills install slka.skill
+```
+
+See **[skill/README.md](skill/README.md)** for details on using and modifying the skill.
+
 ## Documentation
 
 - **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
