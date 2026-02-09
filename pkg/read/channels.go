@@ -89,9 +89,8 @@ var channelsInfoCmd = &cobra.Command{
 			return fmt.Errorf("exit code %d", result.ExitCode())
 		}
 
-		result := output.Success(map[string]interface{}{
-			"channel": channel,
-		})
+		// Return channel fields directly (not wrapped in "channel" object)
+		result := output.Success(channel)
 		result.Print(outputPretty)
 		return nil
 	},

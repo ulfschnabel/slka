@@ -56,10 +56,6 @@ func NewClient(token string) Client {
 	options := []slack.Option{}
 	if apiURL := os.Getenv("SLACK_API_URL"); apiURL != "" {
 		options = append(options, slack.OptionAPIURL(apiURL))
-		// Debug log for testing
-		if os.Getenv("SLKA_DEBUG") == "1" {
-			println("Using custom Slack API URL:", apiURL)
-		}
 	}
 
 	return &RealClient{

@@ -1,6 +1,9 @@
 package fixtures
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Channel represents a Slack channel for testing
 type Channel struct {
@@ -91,5 +94,7 @@ func GetTestChannels() []Channel {
 }
 
 func formatTimestamp(unixTime int64) string {
-	return time.Unix(unixTime, 0).Format("1234567890.000000")
+	// Slack timestamps are in format: seconds.microseconds
+	// Example: "1234567890.000000"
+	return fmt.Sprintf("%d.000000", unixTime)
 }

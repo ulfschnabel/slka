@@ -48,17 +48,18 @@ func (m *MockSlackServer) URL() string {
 	return m.Server.URL
 }
 
-// checkAuth validates the Bearer token
+// checkAuth validates the token from form data or query parameter
 func (m *MockSlackServer) checkAuth(r *http.Request) bool {
-	auth := r.Header.Get("Authorization")
-	expected := "Bearer " + m.Token
-	// Debug: log auth headers for troubleshooting
-	if auth != expected {
-		println("Auth mismatch!")
-		println("  Expected:", expected)
-		println("  Got:", auth)
+	// Parse form data to get token
+	r.ParseForm()
+	token := r.FormValue("token")
+
+	// Also check query parameter as fallback
+	if token == "" {
+		token = r.URL.Query().Get("token")
 	}
-	return auth == expected
+
+	return token == m.Token
 }
 
 // writeError writes an error response
@@ -77,7 +78,13 @@ func (m *MockSlackServer) handleConversationsList(w http.ResponseWriter, r *http
 		return
 	}
 
-	types := r.URL.Query().Get("types")
+	// Parse form data to get types
+	r.ParseForm()
+	types := r.FormValue("types")
+	// Also check query parameter as fallback
+	if types == "" {
+		types = r.URL.Query().Get("types")
+	}
 
 	var channels []interface{}
 	for _, ch := range m.channels {
@@ -116,7 +123,13 @@ func (m *MockSlackServer) handleConversationsInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	channelID := r.URL.Query().Get("channel")
+	// Parse form data to get channel ID
+	r.ParseForm()
+	channelID := r.FormValue("channel")
+	// Also check query parameter as fallback
+	if channelID == "" {
+		channelID = r.URL.Query().Get("channel")
+	}
 	if channelID == "" {
 		m.writeError(w, "channel_not_found")
 		return
@@ -143,7 +156,13 @@ func (m *MockSlackServer) handleConversationsHistory(w http.ResponseWriter, r *h
 		return
 	}
 
-	channelID := r.URL.Query().Get("channel")
+	// Parse form data to get channel ID
+	r.ParseForm()
+	channelID := r.FormValue("channel")
+	// Also check query parameter as fallback
+	if channelID == "" {
+		channelID = r.URL.Query().Get("channel")
+	}
 	messages := fixtures.GetTestMessages(channelID)
 
 	var apiMessages []interface{}
@@ -189,7 +208,13 @@ func (m *MockSlackServer) handleUsersInfo(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	userID := r.URL.Query().Get("user")
+	// Parse form data to get user ID
+	r.ParseForm()
+	userID := r.FormValue("user")
+	// Also check query parameter as fallback
+	if userID == "" {
+		userID = r.URL.Query().Get("user")
+	}
 	user := fixtures.GetUserByID(userID)
 	if user == nil {
 		m.writeError(w, "user_not_found")

@@ -68,8 +68,8 @@ Examples:
 		}
 
 		result := output.Success(map[string]interface{}{
-			"unread_conversations": unreads,
-			"total_count":          len(unreads),
+			"conversations": unreads,
+			"total_count":   len(unreads),
 		})
 		result.Print(outputPretty)
 		return nil

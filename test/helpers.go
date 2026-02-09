@@ -91,7 +91,9 @@ func (e *TestEnv) RunCommand(args ...string) *CommandResult {
 	e.T.Logf("Using SLACK_API_URL: %s", apiURL)
 	e.T.Logf("Using token: %s", e.MockServer.Token)
 
-	output, err := cmd.CombinedOutput()
+	// Capture stdout and stderr separately
+	// JSON output goes to stdout, debug output goes to stderr
+	output, err := cmd.Output() // Only capture stdout
 
 	return &CommandResult{
 		T:        e.T,
@@ -207,7 +209,7 @@ func (r *CommandResult) GetJSONArray(path string) []interface{} {
 	value := r.GetJSONField(path)
 	arr, ok := value.([]interface{})
 	if !ok {
-		r.T.Fatalf("Field %s is not an array", path)
+		r.T.Fatalf("Field %s is not an array. Value: %+v (type: %T). Full output: %s", path, value, value, r.Output)
 	}
 	return arr
 }
