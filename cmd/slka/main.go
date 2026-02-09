@@ -77,7 +77,7 @@ func findCommand(rootCmd *cobra.Command, use string) *cobra.Command {
 func isWriteCommand(cmd *cobra.Command) bool {
 	// Check if command path contains write-only commands
 	writeCommands := []string{"message", "config"}
-	writeSubcommands := []string{"send", "reply", "edit", "create", "archive", "invite", "kick", "init"}
+	writeSubcommands := []string{"send", "reply", "edit", "create", "archive", "invite", "kick", "init", "mark-read", "rename", "set-topic", "set-description", "unarchive"}
 
 	cmdPath := cmd.CommandPath()
 

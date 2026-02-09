@@ -34,6 +34,7 @@ func main() {
 	mux.HandleFunc("/api/conversations.list", mock.handleConversationsList)
 	mux.HandleFunc("/api/conversations.info", mock.handleConversationsInfo)
 	mux.HandleFunc("/api/conversations.history", mock.handleConversationsHistory)
+	mux.HandleFunc("/api/conversations.mark", mock.handleConversationsMark)
 	mux.HandleFunc("/api/users.list", mock.handleUsersList)
 	mux.HandleFunc("/api/users.info", mock.handleUsersInfo)
 	mux.HandleFunc("/api/users.lookupByEmail", mock.handleUsersLookupByEmail)
@@ -349,3 +350,40 @@ func splitTypes(types string) []string {
 	return result
 }
 
+
+func (m *MockServer) handleConversationsMark(w http.ResponseWriter, r *http.Request) {
+	if !m.checkAuth(r) {
+		m.writeError(w, "invalid_auth")
+		return
+	}
+
+	// Parse form data
+	r.ParseForm()
+	channelID := r.FormValue("channel")
+	if channelID == "" {
+		channelID = r.URL.Query().Get("channel")
+	}
+	ts := r.FormValue("ts")
+	if ts == "" {
+		ts = r.URL.Query().Get("ts")
+	}
+
+	// Validate channel exists
+	found := false
+	for _, ch := range m.channels {
+		if ch.ID == channelID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		m.writeError(w, "channel_not_found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok": true,
+	})
+}

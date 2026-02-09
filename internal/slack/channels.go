@@ -226,6 +226,15 @@ func convertChannel(ch slack.Channel) ChannelInfo {
 	}
 }
 
+// MarkAsRead marks a channel as read up to the specified timestamp
+func (s *ChannelService) MarkAsRead(channelID string, timestamp string) error {
+	err := s.client.MarkConversation(channelID, timestamp)
+	if err != nil {
+		return fmt.Errorf("failed to mark as read: %w", err)
+	}
+	return nil
+}
+
 func convertMessage(msg slack.Message) MessageInfo {
 	reactions := make([]ReactionInfo, len(msg.Reactions))
 	for i, r := range msg.Reactions {

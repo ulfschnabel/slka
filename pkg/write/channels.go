@@ -347,6 +347,94 @@ var channelsSetDescriptionCmd = &cobra.Command{
 	},
 }
 
+var channelsMarkReadCmd = &cobra.Command{
+	Use:   "mark-read <channel> [timestamp]",
+	Short: "Mark a channel as read up to a specific message",
+	Long: `Mark a channel as read up to a specific timestamp. If no timestamp is provided, marks all messages as read.
+
+This is useful for bots that process messages and want to clear the unread indicator.
+
+Examples:
+  # Mark all messages as read in a channel
+  slka channels mark-read general
+
+  # Mark as read up to a specific message timestamp
+  slka channels mark-read general 1234567890.000000`,
+	Args: cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		channelArg := args[0]
+		var timestamp string
+		if len(args) > 1 {
+			timestamp = args[1]
+		}
+
+		// Resolve channel
+		svc := slackpkg.NewChannelService(slackClient)
+		channelID, err := svc.ResolveChannel(channelArg)
+		if err != nil {
+			result := output.Error("channel_not_found", err.Error(), "Check the channel name or ID")
+			result.Print(outputPretty)
+			return fmt.Errorf("exit code %d", result.ExitCode())
+		}
+
+		// If no timestamp provided, get the latest message timestamp
+		if timestamp == "" {
+			history, err := svc.GetHistory(channelID, slackpkg.HistoryOptions{Limit: 1})
+			if err != nil {
+				result := output.Error("get_history_failed", err.Error(), "Could not fetch latest message")
+				result.Print(outputPretty)
+				return fmt.Errorf("exit code %d", result.ExitCode())
+			}
+			if len(history) == 0 {
+				// No messages, nothing to mark
+				result := output.Success(map[string]interface{}{
+					"channel_id": channelID,
+					"marked":     false,
+					"reason":     "no messages in channel",
+				})
+				result.Print(outputPretty)
+				return nil
+			}
+			timestamp = history[0].Timestamp
+		}
+
+		payload := map[string]interface{}{
+			"channel":   channelID,
+			"timestamp": timestamp,
+		}
+
+		// Check for dry run
+		if dryRun {
+			result := output.DryRun("mark_read", payload)
+			result.Print(outputPretty)
+			return nil
+		}
+
+		// Request approval (usually auto-approved for mark read)
+		if err := approver.Require("mark_read", payload); err != nil {
+			result := output.ApprovalRequired("mark_read", payload)
+			result.Print(outputPretty)
+			return fmt.Errorf("exit code %d", result.ExitCode())
+		}
+
+		// Mark as read
+		err = svc.MarkAsRead(channelID, timestamp)
+		if err != nil {
+			result := output.Error("mark_read_failed", err.Error(), "Check your permissions")
+			result.Print(outputPretty)
+			return fmt.Errorf("exit code %d", result.ExitCode())
+		}
+
+		result := output.Success(map[string]interface{}{
+			"channel_id": channelID,
+			"timestamp":  timestamp,
+			"marked":     true,
+		})
+		result.Print(outputPretty)
+		return nil
+	},
+}
+
 func init() {
 	// Add channels commands
 	RootCmd.AddCommand(channelsCmd)
@@ -356,6 +444,7 @@ func init() {
 	channelsCmd.AddCommand(channelsRenameCmd)
 	channelsCmd.AddCommand(channelsSetTopicCmd)
 	channelsCmd.AddCommand(channelsSetDescriptionCmd)
+	channelsCmd.AddCommand(channelsMarkReadCmd)
 
 	// Create flags
 	channelsCreateCmd.Flags().Bool("private", false, "Create as private channel (default: false, creates public channel)")

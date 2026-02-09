@@ -1,6 +1,12 @@
 package slack
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/slack-go/slack"
@@ -40,6 +46,7 @@ type Client interface {
 	SetPurposeOfConversation(channelID, purpose string) (*slack.Channel, error)
 	InviteUsersToConversation(channelID string, users ...string) (*slack.Channel, error)
 	KickUserFromConversation(channelID, user string) error
+	MarkConversation(channelID, timestamp string) error
 
 	// DMs
 	OpenConversation(params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
@@ -48,6 +55,7 @@ type Client interface {
 // RealClient wraps the actual slack.Client
 type RealClient struct {
 	*slack.Client
+	token string
 }
 
 // NewClient creates a new Slack client
@@ -60,7 +68,55 @@ func NewClient(token string) Client {
 
 	return &RealClient{
 		Client: slack.New(token, options...),
+		token:  token,
 	}
+}
+
+// MarkConversation marks a conversation as read up to the given timestamp
+// This is a custom implementation since slack-go doesn't expose conversations.mark
+func (c *RealClient) MarkConversation(channelID, timestamp string) error {
+	// Get the API endpoint - use custom URL if set
+	apiURL := os.Getenv("SLACK_API_URL")
+	if apiURL == "" {
+		apiURL = "https://slack.com/api/"
+	}
+
+	// Prepare form data
+	data := url.Values{
+		"channel": {channelID},
+		"ts":      {timestamp},
+		"token":   {c.token},
+	}
+
+	req, err := http.NewRequest("POST", apiURL+"conversations.mark", bytes.NewBufferString(data.Encode()))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to call API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse response
+	var slackResp slack.SlackResponse
+	if err := json.Unmarshal(body, &slackResp); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if !slackResp.Ok {
+		return fmt.Errorf("slack server error: %s", resp.Status)
+	}
+
+	return nil
 }
 
 // Ensure RealClient implements Client interface
