@@ -21,6 +21,11 @@ builds:
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
+    # Sign macOS binaries after build
+    hooks:
+      post:
+        - cmd: sh -c 'if [ "{{ .Os }}" = "darwin" ]; then codesign --sign "Developer ID Application" --options runtime --timestamp --verbose "{{ .Path }}"; fi'
+          output: true
 
 archives:
   - id: slka
@@ -37,6 +42,11 @@ archives:
       - LICENSE*
       - slack-manifest-*.yaml
     # tar.gz for Unix, zip for Windows (handled automatically by GoReleaser)
+
+# Notarization commented out - will add in future release with correct syntax
+# notarize:
+#   macos:
+#     - profile_name: "gagent-cli-notarize"
 
 checksum:
   name_template: 'checksums.txt'
