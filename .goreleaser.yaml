@@ -21,10 +21,10 @@ builds:
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
-    # Sign macOS binaries after build
+    # Sign macOS binaries after build (only if codesign is available, e.g. on macOS runners)
     hooks:
       post:
-        - cmd: sh -c 'if [ "{{ .Os }}" = "darwin" ]; then codesign --sign "Developer ID Application" --options runtime --timestamp --verbose "{{ .Path }}"; fi'
+        - cmd: sh -c 'if [ "{{ .Os }}" = "darwin" ] && command -v codesign >/dev/null 2>&1; then codesign --sign "Developer ID Application" --options runtime --timestamp --verbose "{{ .Path }}"; fi'
           output: true
 
 archives:
