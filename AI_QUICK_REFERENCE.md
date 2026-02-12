@@ -6,6 +6,8 @@ One-page cheat sheet for AI agents using slka.
 
 All commands return JSON. Parse it. Check `"ok": true/false`.
 
+All list commands return results **sorted by last activity** (most recent first) and have conservative default limits to keep output concise.
+
 ## Read Commands (Safe, No Approval)
 
 ### Unread Tracking - **Find what needs attention!**
@@ -35,13 +37,14 @@ slka unread list --order-by count
 slka channels list --filter engineering
 slka channels list --filter backend --type private
 
-# List all (expensive, avoid if possible)
+# List channels (default: 50 most recently active)
 slka channels list
 
 # Get channel info
 slka channels info general
 
-# Get recent messages
+# Get recent messages (default: 20)
+slka channels history general
 slka channels history general --limit 50
 slka channels history general --since TIMESTAMP
 ```
@@ -190,21 +193,20 @@ elif response.get("requires_approval"):
 
 ## Token Efficiency (Critical for AI Agents!)
 
-```python
-# ❌ BAD: Returns 100+ channels, wastes tokens
-data = slka("channels list")  # ~10,000 tokens
+Results are sorted by last activity and limited by default (50 for lists, 20 for history). Use `--filter` to narrow further:
 
-# ✅ GOOD: Returns 2-3 channels, efficient
+```python
+# OK: Returns 50 most recently active channels
+data = slka("channels list")
+
+# ✅ BETTER: Returns only matching channels
 data = slka("channels list --filter backend")  # ~300 tokens
 
-# ❌ BAD: Returns all DMs
-data = slka("dm list")  # ~5,000 tokens
-
-# ✅ GOOD: Returns only DMs with alice
-data = slka("dm list --filter alice")  # ~200 tokens
+# ✅ Increase limit if needed
+data = slka("channels list --limit 200")
 ```
 
-**Always use --filter when you know what you're looking for!**
+**Use --filter when you know what you're looking for!**
 
 ## Common Patterns
 

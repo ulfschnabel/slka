@@ -77,10 +77,10 @@ func TestListUnread(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, results, 3, "Should return only conversations with unread messages")
 
-	// Check that results are ordered by unread count (descending)
+	// DMs sort above channels, then by unread count (descending) within each group
 	assert.Equal(t, 10, results[0].UnreadCount, "Group DM with 10 unread should be first")
-	assert.Equal(t, 5, results[1].UnreadCount, "Channel with 5 unread should be second")
-	assert.Equal(t, 3, results[2].UnreadCount, "DM with 3 unread should be third")
+	assert.Equal(t, 3, results[1].UnreadCount, "DM with 3 unread should be second (DMs above channels)")
+	assert.Equal(t, 5, results[2].UnreadCount, "Channel with 5 unread should be third")
 
 	mockClient.AssertExpectations(t)
 }
@@ -306,6 +306,56 @@ func TestListUnreadOrderByOldest(t *testing.T) {
 
 	assert.Equal(t, "C1", results[2].ID, "Newest unread should be last")
 	assert.Equal(t, "1706123480.000000", results[2].LastRead)
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestListUnreadDMsSortAboveChannels(t *testing.T) {
+	mockClient := new(MockClient)
+
+	// Channel with high unread count
+	channel1 := slack.Channel{}
+	channel1.ID = "C1"
+	channel1.Name = "busy-channel"
+	channel1.IsChannel = true
+	channel1.UnreadCount = 50
+	channel1.UnreadCountDisplay = 50
+
+	// DM with low unread count
+	dm1 := slack.Channel{}
+	dm1.ID = "D1"
+	dm1.IsIM = true
+	dm1.User = "U456"
+	dm1.UnreadCount = 2
+	dm1.UnreadCountDisplay = 2
+
+	channels := []slack.Channel{channel1, dm1}
+
+	mockClient.On("GetConversations", mock.Anything).Return(channels, "", nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "C1",
+		IncludeNumMembers: false,
+	}).Return(&channel1, nil)
+	mockClient.On("GetConversationInfo", &slack.GetConversationInfoInput{
+		ChannelID:         "D1",
+		IncludeNumMembers: false,
+	}).Return(&dm1, nil)
+	mockClient.On("GetUserInfo", "U456").Return(&slack.User{
+		ID:   "U456",
+		Name: "alice",
+	}, nil)
+
+	svc := NewUnreadService(mockClient)
+	results, err := svc.ListUnread(UnreadOptions{})
+
+	assert.NoError(t, err)
+	assert.Len(t, results, 2)
+
+	// DM should sort first despite lower unread count
+	assert.Equal(t, "D1", results[0].ID, "DM should sort above channel")
+	assert.Equal(t, 2, results[0].UnreadCount)
+	assert.Equal(t, "C1", results[1].ID, "Channel should sort below DM")
+	assert.Equal(t, 50, results[1].UnreadCount)
 
 	mockClient.AssertExpectations(t)
 }

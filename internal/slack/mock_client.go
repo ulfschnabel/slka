@@ -154,3 +154,8 @@ func (m *MockClient) OpenConversation(params *slack.OpenConversationParameters) 
 	}
 	return args.Get(0).(*slack.Channel), args.Bool(1), args.Bool(2), args.Error(3)
 }
+
+func (m *MockClient) MarkConversation(channelID, timestamp string) error {
+	args := m.Called(channelID, timestamp)
+	return args.Error(0)
+}

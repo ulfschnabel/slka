@@ -45,6 +45,7 @@ Examples:
 		dmsOnly, _ := cmd.Flags().GetBool("dms-only")
 		minUnread, _ := cmd.Flags().GetInt("min-unread")
 		orderBy, _ := cmd.Flags().GetString("order-by")
+		limit, _ := cmd.Flags().GetInt("limit")
 
 		// Validate order-by
 		if orderBy != "" && orderBy != "count" && orderBy != "oldest" {
@@ -59,6 +60,7 @@ Examples:
 			DMsOnly:        dmsOnly,
 			MinUnreadCount: minUnread,
 			OrderBy:        orderBy,
+			Limit:          limit,
 		})
 
 		if err != nil {
@@ -86,4 +88,5 @@ func init() {
 	unreadListCmd.Flags().Bool("dms-only", false, "Only show unread DMs (1-on-1 and groups)")
 	unreadListCmd.Flags().Int("min-unread", 0, "Minimum number of unread messages to show (0 = show all unread)")
 	unreadListCmd.Flags().String("order-by", "count", "Sort order: 'count' (most unread first, default) or 'oldest' (oldest unread first for processing old items)")
+	unreadListCmd.Flags().Int("limit", 20, "Maximum number of unread conversations to return (default: 20, DMs sorted above channels)")
 }

@@ -79,6 +79,72 @@ func TestListDMsEmpty(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestListDMsSortedByLastMessage(t *testing.T) {
+	mockClient := new(MockClient)
+	mockClient.On("GetConversations", mock.MatchedBy(func(params *slack.GetConversationsParameters) bool {
+		return params.Types[0] == "im"
+	})).Return(
+		[]slack.Channel{
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID:   "D_OLD",
+						IsIM: true,
+						User: "U111",
+						// No Latest message
+					},
+				},
+			},
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID:   "D_NEW",
+						IsIM: true,
+						User: "U222",
+						Latest: &slack.Message{
+							Msg: slack.Msg{Timestamp: "1706000000.000000"},
+						},
+					},
+				},
+			},
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID:   "D_MID",
+						IsIM: true,
+						User: "U333",
+						Latest: &slack.Message{
+							Msg: slack.Msg{Timestamp: "1700000000.000000"},
+						},
+					},
+				},
+			},
+		},
+		"",
+		nil,
+	)
+
+	// Mock user lookups
+	mockClient.On("GetUserInfo", "U111").Return(&slack.User{ID: "U111", Name: "old-user"}, nil)
+	mockClient.On("GetUserInfo", "U222").Return(&slack.User{ID: "U222", Name: "new-user"}, nil)
+	mockClient.On("GetUserInfo", "U333").Return(&slack.User{ID: "U333", Name: "mid-user"}, nil)
+
+	svc := NewDMService(mockClient)
+	result, err := svc.List(0)
+
+	assert.NoError(t, err)
+	assert.Len(t, result, 3)
+	// Most recent first
+	assert.Equal(t, "D_NEW", result[0].ID)
+	assert.Equal(t, "1706000000.000000", result[0].LastMessageTS)
+	assert.Equal(t, "D_MID", result[1].ID)
+	assert.Equal(t, "1700000000.000000", result[1].LastMessageTS)
+	// No messages sorts last
+	assert.Equal(t, "D_OLD", result[2].ID)
+	assert.Equal(t, "", result[2].LastMessageTS)
+	mockClient.AssertExpectations(t)
+}
+
 func TestResolveUserByID(t *testing.T) {
 	mockClient := new(MockClient)
 	// Not called for ID format

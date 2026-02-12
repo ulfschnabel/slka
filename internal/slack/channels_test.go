@@ -155,6 +155,62 @@ func TestGetChannelMembers(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestListChannelsSortedByLastMessage(t *testing.T) {
+	mockClient := new(MockClient)
+	mockClient.On("GetConversations", mock.Anything).Return(
+		[]slack.Channel{
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID: "C_OLD",
+					},
+					Name: "old-channel",
+				},
+				// No Latest message
+			},
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID: "C_MID",
+						Latest: &slack.Message{
+							Msg: slack.Msg{Timestamp: "1700000000.000000"},
+						},
+					},
+					Name: "mid-channel",
+				},
+			},
+			{
+				GroupConversation: slack.GroupConversation{
+					Conversation: slack.Conversation{
+						ID: "C_NEW",
+						Latest: &slack.Message{
+							Msg: slack.Msg{Timestamp: "1706000000.000000"},
+						},
+					},
+					Name: "new-channel",
+				},
+			},
+		},
+		"",
+		nil,
+	)
+
+	svc := NewChannelService(mockClient)
+	result, err := svc.List(ListChannelsOptions{})
+
+	assert.NoError(t, err)
+	assert.Len(t, result, 3)
+	// Most recent first
+	assert.Equal(t, "new-channel", result[0].Name)
+	assert.Equal(t, "1706000000.000000", result[0].LastMessageTS)
+	assert.Equal(t, "mid-channel", result[1].Name)
+	assert.Equal(t, "1700000000.000000", result[1].LastMessageTS)
+	// No messages sorts last
+	assert.Equal(t, "old-channel", result[2].Name)
+	assert.Equal(t, "", result[2].LastMessageTS)
+	mockClient.AssertExpectations(t)
+}
+
 func TestResolveChannelByName(t *testing.T) {
 	mockClient := new(MockClient)
 	mockClient.On("GetConversations", mock.Anything).Return(

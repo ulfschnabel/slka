@@ -1,5 +1,7 @@
 # slka Command Reference
 
+All list commands return results **sorted by last activity** (most recent first). Default limits: 50 for lists, 20 for history. Use `--limit N` to override.
+
 ## Read Operations (No Approval Required)
 
 ### Unread Tracking
@@ -21,6 +23,7 @@ slka channels list --type private
 
 # Get channel info and history
 slka channels info general
+slka channels history general              # default: 20 messages
 slka channels history general --limit 50
 slka channels history general --since 2024-01-01
 ```
@@ -122,12 +125,15 @@ Example response:
 ## Token Efficiency Tips
 
 ```bash
-# ❌ Bad: Returns all 100+ channels (~10k tokens)
+# OK: Returns 50 most recently active channels (sorted by activity)
 slka channels list
 
-# ✅ Good: Returns 2-3 channels (~300 tokens)
+# ✅ Better: Returns only matching channels
 slka channels list --filter backend
 
 # ✅ Good: Find specific user's DMs
 slka dm list --filter alice
+
+# Override default limit if needed
+slka channels list --limit 200
 ```

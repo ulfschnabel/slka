@@ -204,17 +204,17 @@ func init() {
 	// List flags
 	channelsListCmd.Flags().Bool("include-archived", false, "Include archived channels in results")
 	channelsListCmd.Flags().String("type", "all", "Filter by type: public, private, or all (default: all)")
-	channelsListCmd.Flags().Int("limit", 0, "Maximum number of channels to return (0 = unlimited)")
+	channelsListCmd.Flags().Int("limit", 50, "Maximum number of channels to return (default: 50, sorted by last activity)")
 	channelsListCmd.Flags().String("filter", "", "Filter channels by name substring (case-insensitive, e.g., 'eng' matches 'engineering')")
 
 	// History flags
 	channelsHistoryCmd.Flags().String("since", "", "Only messages after this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
 	channelsHistoryCmd.Flags().String("until", "", "Only messages before this timestamp (Unix timestamp or ISO8601: 1706123456 or 2024-01-25)")
-	channelsHistoryCmd.Flags().Int("limit", 100, "Maximum number of messages")
+	channelsHistoryCmd.Flags().Int("limit", 20, "Maximum number of messages (default: 20)")
 	channelsHistoryCmd.Flags().Bool("include-threads", false, "Include thread replies inline")
 
 	// Members flags
-	channelsMembersCmd.Flags().Int("limit", 0, "Maximum number of members to return")
+	channelsMembersCmd.Flags().Int("limit", 50, "Maximum number of members to return (default: 50)")
 }
 
 // parseTimestamp parses a timestamp string (Unix timestamp or ISO8601)

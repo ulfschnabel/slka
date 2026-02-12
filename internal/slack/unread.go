@@ -29,6 +29,7 @@ type UnreadOptions struct {
 	DMsOnly        bool   // Only return DMs (1-on-1 and groups)
 	MinUnreadCount int    // Minimum number of unread messages (0 = any)
 	OrderBy        string // Ordering: "count" (most unread first), "oldest" (oldest unread first), default: "count"
+	Limit          int    // Maximum number of results (0 = unlimited)
 }
 
 // UnreadService handles retrieving unread conversations
@@ -115,32 +116,58 @@ func (s *UnreadService) ListUnread(opts UnreadOptions) ([]UnreadInfo, error) {
 			LastRead:           convInfo.LastRead,
 		}
 
-		// For 1-on-1 DMs, get user information
+		// Store user ID for DMs; names resolved after sorting/limiting
 		if convInfo.IsIM && convInfo.User != "" {
-			user, err := s.client.GetUserInfo(convInfo.User)
-			if err == nil {
-				info.UserID = user.ID
-				info.UserName = user.Name
-			}
+			info.UserID = convInfo.User
 		}
-
-		// For group DMs, could potentially list users (optional for now)
-		// This would require additional API calls
 
 		results = append(results, info)
 	}
 
 	// Sort according to OrderBy option
+	// DMs always sort above channels (more important), then by the chosen ordering
+	isDM := func(info UnreadInfo) bool {
+		return info.IsIM || info.IsMpIM
+	}
 	if opts.OrderBy == "oldest" {
-		// Sort by last_read timestamp (ascending), so oldest unread items come first
 		sort.Slice(results, func(i, j int) bool {
+			di, dj := isDM(results[i]), isDM(results[j])
+			if di != dj {
+				return di
+			}
 			return results[i].LastRead < results[j].LastRead
 		})
 	} else {
-		// Default: sort by unread count (descending), so most urgent items come first
 		sort.Slice(results, func(i, j int) bool {
+			di, dj := isDM(results[i]), isDM(results[j])
+			if di != dj {
+				return di
+			}
 			return results[i].UnreadCount > results[j].UnreadCount
 		})
+	}
+
+	// Apply limit after sorting
+	if opts.Limit > 0 && len(results) > opts.Limit {
+		results = results[:opts.Limit]
+	}
+
+	// Resolve user names only for the final limited set of DM results
+	var dmUserIDs []string
+	for _, r := range results {
+		if r.UserID != "" {
+			dmUserIDs = append(dmUserIDs, r.UserID)
+		}
+	}
+	if len(dmUserIDs) > 0 {
+		userMap := ResolveUserNames(s.client, dmUserIDs)
+		for i := range results {
+			if results[i].UserID != "" {
+				if info, ok := userMap[results[i].UserID]; ok {
+					results[i].UserName = info.Name
+				}
+			}
+		}
 	}
 
 	return results, nil

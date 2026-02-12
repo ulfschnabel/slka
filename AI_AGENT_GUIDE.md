@@ -7,6 +7,8 @@ Complete guide for AI agents (Claude, GPT, custom LLMs) using slka to interact w
 `slka` is designed specifically for AI agents with:
 - **JSON output** for all commands (easy parsing)
 - **Unified binary** with both read and write operations
+- **Activity-sorted results** — all lists sorted by most recent activity first
+- **Conservative defaults** — lists return 50 items, history returns 20 messages
 - **Human approval mode** for sensitive operations
 - **Token-efficient filtering** to reduce API calls and context usage
 - **Structured error responses** with actionable suggestions
@@ -287,7 +289,7 @@ slka users lookup alice
 #### List Users
 ```bash
 slka users list
-slka users list --limit 100
+slka users list --limit 50
 ```
 
 ## AI Agent Workflows
@@ -519,7 +521,7 @@ recent = slka("channels history general --limit 20")
 # Specific time range
 from datetime import datetime, timedelta
 since = int((datetime.now() - timedelta(hours=6)).timestamp())
-result = slka(f"channels history general --since {since} --limit 100")
+result = slka(f"channels history general --since {since} --limit 50")
 ```
 
 ## Security Best Practices

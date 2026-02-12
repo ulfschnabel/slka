@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -57,6 +58,7 @@ type UserInfo struct {
 	RealName string `json:"real_name"`
 	Email    string `json:"email,omitempty"`
 	IsBot    bool   `json:"is_bot"`
+	Updated  int64  `json:"updated,omitempty"`
 }
 
 // ListChannelsOptions contains options for listing channels
@@ -104,6 +106,11 @@ func (s *ChannelService) List(opts ListChannelsOptions) ([]ChannelInfo, error) {
 	for i, ch := range channels {
 		result[i] = convertChannel(ch)
 	}
+
+	// Sort by last message timestamp descending (most recent first)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LastMessageTS > result[j].LastMessageTS
+	})
 
 	return result, nil
 }
@@ -169,14 +176,13 @@ func (s *ChannelService) GetMembers(channelID string, limit int) ([]UserInfo, er
 		return nil, fmt.Errorf("failed to get users in conversation: %w", err)
 	}
 
+	userMap := ResolveUserNames(s.client, userIDs)
+
 	users := make([]UserInfo, 0, len(userIDs))
 	for _, userID := range userIDs {
-		user, err := s.client.GetUserInfo(userID)
-		if err != nil {
-			// Skip users we can't fetch info for
-			continue
+		if info, ok := userMap[userID]; ok {
+			users = append(users, info)
 		}
-		users = append(users, convertUser(*user))
 	}
 
 	return users, nil
@@ -213,7 +219,7 @@ func (s *ChannelService) ResolveChannel(channel string) (string, error) {
 // Helper functions
 
 func convertChannel(ch slack.Channel) ChannelInfo {
-	return ChannelInfo{
+	info := ChannelInfo{
 		ID:          ch.ID,
 		Name:        ch.Name,
 		IsPrivate:   ch.IsPrivate,
@@ -224,6 +230,10 @@ func convertChannel(ch slack.Channel) ChannelInfo {
 		Created:     int64(ch.Created),
 		Creator:     ch.Creator,
 	}
+	if ch.Latest != nil {
+		info.LastMessageTS = ch.Latest.Timestamp
+	}
+	return info
 }
 
 // MarkAsRead marks a channel as read up to the specified timestamp
@@ -262,5 +272,6 @@ func convertUser(user slack.User) UserInfo {
 		RealName: user.RealName,
 		Email:    user.Profile.Email,
 		IsBot:    user.IsBot,
+		Updated:  int64(user.Updated),
 	}
 }

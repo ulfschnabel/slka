@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -40,10 +41,16 @@ func (s *UserService) List(opts ListUsersOptions) ([]UserInfo, error) {
 		}
 
 		result = append(result, convertUser(user))
+	}
 
-		if opts.Limit > 0 && len(result) >= opts.Limit {
-			break
-		}
+	// Sort by Updated timestamp descending (most recently updated first)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Updated > result[j].Updated
+	})
+
+	// Apply limit after sorting
+	if opts.Limit > 0 && len(result) > opts.Limit {
+		result = result[:opts.Limit]
 	}
 
 	return result, nil
@@ -83,6 +90,19 @@ func (s *UserService) Lookup(query string, byField string) (*UserInfo, error) {
 	}
 
 	return nil, fmt.Errorf("user not found: %s", query)
+}
+
+// ResolveUserNames fetches info for a set of user IDs and returns a map.
+// Only fetches the users requested, not the entire workspace.
+func ResolveUserNames(client Client, userIDs []string) map[string]UserInfo {
+	result := make(map[string]UserInfo, len(userIDs))
+	for _, id := range userIDs {
+		user, err := client.GetUserInfo(id)
+		if err == nil {
+			result[id] = convertUser(*user)
+		}
+	}
+	return result
 }
 
 // ResolveUser resolves a user name or email to a user ID

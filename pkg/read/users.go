@@ -77,7 +77,7 @@ func init() {
 	// List flags
 	usersListCmd.Flags().Bool("include-bots", false, "Include bot users in results (default: false)")
 	usersListCmd.Flags().Bool("include-deleted", false, "Include deactivated/deleted users in results (default: false)")
-	usersListCmd.Flags().Int("limit", 0, "Maximum number of users to return (0 = unlimited)")
+	usersListCmd.Flags().Int("limit", 50, "Maximum number of users to return (default: 50, sorted by last updated)")
 
 	// Lookup flags
 	usersLookupCmd.Flags().String("by", "auto", "Search by field: 'name', 'email', or 'auto' (tries both, default: auto)")

@@ -10,10 +10,11 @@ import (
 
 // DMInfo represents a direct message conversation
 type DMInfo struct {
-	ID        string   `json:"id"`
-	Type      string   `json:"type"` // "im" or "mpim"
-	UserIDs   []string `json:"user_ids"`
-	UserNames []string `json:"user_names,omitempty"`
+	ID            string   `json:"id"`
+	Type          string   `json:"type"` // "im" or "mpim"
+	UserIDs       []string `json:"user_ids"`
+	UserNames     []string `json:"user_names,omitempty"`
+	LastMessageTS string   `json:"last_message_ts,omitempty"`
 }
 
 // DMService provides DM operations
@@ -39,6 +40,19 @@ func (s *DMService) List(limit int) ([]DMInfo, error) {
 		return nil, fmt.Errorf("failed to list DMs: %w", err)
 	}
 
+	// Collect all user IDs we need to resolve
+	var userIDsToResolve []string
+	for _, channel := range channels {
+		if channel.IsIM && channel.User != "" {
+			userIDsToResolve = append(userIDsToResolve, channel.User)
+		} else if channel.IsMpIM {
+			userIDsToResolve = append(userIDsToResolve, channel.Members...)
+		}
+	}
+
+	// Batch resolve user names (N calls, but bounded by limit)
+	userMap := ResolveUserNames(s.client, userIDsToResolve)
+
 	dms := make([]DMInfo, 0, len(channels))
 	for _, channel := range channels {
 		dm := DMInfo{
@@ -46,26 +60,24 @@ func (s *DMService) List(limit int) ([]DMInfo, error) {
 			Type: "im",
 		}
 
+		if channel.Latest != nil {
+			dm.LastMessageTS = channel.Latest.Timestamp
+		}
+
 		// For regular DMs (im type)
 		if channel.IsIM {
 			dm.UserIDs = []string{channel.User}
-			// Try to get user name
-			if channel.User != "" {
-				if user, err := s.client.GetUserInfo(channel.User); err == nil {
-					dm.UserNames = []string{user.Name}
-				}
+			if info, ok := userMap[channel.User]; ok {
+				dm.UserNames = []string{info.Name}
 			}
 		} else if channel.IsMpIM {
 			// For group DMs (mpim type)
 			dm.Type = "mpim"
-			// Get members from the conversation
-			// Note: channel.Members might not be populated, may need to fetch separately
 			if len(channel.Members) > 0 {
 				dm.UserIDs = channel.Members
-				// Try to get user names
 				for _, userID := range channel.Members {
-					if user, err := s.client.GetUserInfo(userID); err == nil {
-						dm.UserNames = append(dm.UserNames, user.Name)
+					if info, ok := userMap[userID]; ok {
+						dm.UserNames = append(dm.UserNames, info.Name)
 					}
 				}
 			}
@@ -73,6 +85,11 @@ func (s *DMService) List(limit int) ([]DMInfo, error) {
 
 		dms = append(dms, dm)
 	}
+
+	// Sort by last message timestamp descending (most recent first)
+	sort.Slice(dms, func(i, j int) bool {
+		return dms[i].LastMessageTS > dms[j].LastMessageTS
+	})
 
 	return dms, nil
 }
