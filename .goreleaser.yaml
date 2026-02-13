@@ -43,11 +43,6 @@ archives:
       - slack-manifest-*.yaml
     # tar.gz for Unix, zip for Windows (handled automatically by GoReleaser)
 
-# Notarization commented out - will add in future release with correct syntax
-# notarize:
-#   macos:
-#     - profile_name: "gagent-cli-notarize"
-
 checksum:
   name_template: 'checksums.txt'
 
@@ -141,12 +136,20 @@ release:
     - [Manifest Setup](https://github.com/ulfschnabel/slka/blob/main/MANIFEST_SETUP.md)
     - [AI Agent Guide](https://github.com/ulfschnabel/slka/blob/main/AI_AGENT_GUIDE.md)
 
-# Homebrew tap (optional - for future use)
-# brews:
-#   - name: slka
-#     homepage: https://github.com/ulfschnabel/slka
-#     description: Slack CLI for Agentic Workflows
-#     license: MIT
-#     repository:
-#       owner: ulfschnabel
-#       name: homebrew-tap
+# Homebrew tap
+brews:
+  - name: slka
+    repository:
+      owner: ulfschnabel
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: https://github.com/ulfschnabel/slka
+    description: "Slack CLI for Agentic Workflows"
+    license: MIT
+    install: |
+      bin.install "slka"
+    test: |
+      system "#{bin}/slka", "--version"
